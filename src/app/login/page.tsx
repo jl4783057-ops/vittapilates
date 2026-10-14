@@ -1,26 +1,24 @@
 "use client";
 
-import React, { useState, Suspense } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useApp } from "@/lib/store/context";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import { Eye, EyeOff, Sparkles, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
 
-function LoginForm() {
+function LoginForm({ initialEmail, sucesso }: { initialEmail: string; sucesso: string | null }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { siteSettings, setCurrentUser } = useApp();
 
-  const [email, setEmail] = useState(searchParams.get("email") || "");
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const sucessoParam = searchParams.get("sucesso");
   const successMessage =
-    sucessoParam === "senha_definida"
+    sucesso === "senha_definida"
       ? "Sua senha foi cadastrada com sucesso! Faça login abaixo para acessar a área da aluna."
       : "";
 
@@ -316,16 +314,14 @@ function LoginForm() {
   );
 }
 
-export default function LoginPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-[#FAF7F2] flex items-center justify-center p-4">
-          <div className="text-xs text-[#827B77]">Carregando tela de login...</div>
-        </div>
-      }
-    >
-      <LoginForm />
-    </Suspense>
-  );
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ email?: string | string[]; sucesso?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const initialEmail = Array.isArray(params.email) ? params.email[0] : params.email || "";
+  const sucesso = Array.isArray(params.sucesso) ? params.sucesso[0] : params.sucesso || null;
+
+  return <LoginForm initialEmail={initialEmail} sucesso={sucesso} />;
 }

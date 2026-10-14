@@ -299,10 +299,10 @@ export default function AdminSubcategoriesPage() {
                 />
               </div>
 
-              {/* Upload de Imagem / Capa da Subcategoria */}
+              {/* Imagem / Capa da Subcategoria */}
               <ImageUploadField
                 label="Imagem / Capa da Subcategoria (Opcional)"
-                helperText="Envie a imagem representativa deste foco ou rotina (JPG, PNG ou WebP até 5 MB)"
+                helperText="Exemplo: /images/capa-subcategoria.webp ou URL externa Unsplash (adicione o arquivo à pasta public/ e informe o caminho)"
                 value={formData.imageUrl}
                 onChange={(url) => setFormData({ ...formData, imageUrl: url })}
                 aspectRatio="wide"

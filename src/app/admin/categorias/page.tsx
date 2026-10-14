@@ -258,7 +258,7 @@ export default function AdminCategoriesPage() {
 
               <ImageUploadField
                 label="Imagem / Banner da Categoria"
-                helperText="Envie o banner de apresentação do programa (JPG, PNG ou WebP até 5 MB)"
+                helperText="Exemplo: /images/banner-categoria.webp ou URL externa Unsplash (adicione o arquivo à pasta public/ e informe o caminho)"
                 value={formData.bannerUrl}
                 onChange={(url) => setFormData({ ...formData, bannerUrl: url })}
                 aspectRatio="banner"

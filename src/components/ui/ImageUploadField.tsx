@@ -1,16 +1,15 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import {
-  Upload,
   Image as ImageIcon,
   Trash2,
-  RefreshCw,
   Eye,
   X,
-  AlertCircle,
   CheckCircle2,
-  Loader2,
+  FolderPlus,
+  GitCommit,
+  ExternalLink,
 } from "lucide-react";
 
 interface ImageUploadFieldProps {
@@ -25,18 +24,14 @@ interface ImageUploadFieldProps {
 
 export function ImageUploadField({
   label,
-  helperText = "Formatos aceitos: JPG, PNG, WebP ou GIF (máx. 5 MB)",
+  helperText,
   value = "",
   onChange,
   aspectRatio = "video",
-  maxSizeMb = 5,
   className = "",
 }: ImageUploadFieldProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [isViewingFull, setIsViewingFull] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
 
   const aspectClass = {
     video: "aspect-[16/9]",
@@ -45,217 +40,146 @@ export function ImageUploadField({
     wide: "aspect-[16/10]",
   }[aspectRatio];
 
-  const handleFile = async (file: File) => {
-    setError(null);
-
-    // Validação de tipo no cliente
-    const validTypes = [
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "image/webp",
-      "image/gif",
-    ];
-    if (!validTypes.includes(file.type)) {
-      setError("Formato de arquivo não suportado. Por favor, envie uma imagem nos formatos JPG, PNG, WebP ou GIF.");
-      return;
-    }
-
-    // Validação de tamanho no cliente
-    const maxBytes = maxSizeMb * 1024 * 1024;
-    if (file.size > maxBytes) {
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-      setError(`Arquivo muito pesado (${sizeMb} MB). O limite máximo permitido é de ${maxSizeMb} MB.`);
-      return;
-    }
-
-    setUploading(true);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Não foi possível enviar a imagem. Tente novamente.");
-        return;
-      }
-
-      onChange(data.url);
-    } catch {
-      setError("Falha na conexão ao enviar o arquivo. Verifique sua conexão e tente novamente.");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
-  };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleFile(file);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      handleFile(file);
-    }
+    onChange(e.target.value.trim());
   };
 
   const handleRemove = () => {
-    setError(null);
     onChange("");
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
   };
 
   return (
-    <div className={`space-y-2 ${className}`}>
-      {/* Label e Helper */}
+    <div className={`space-y-2.5 ${className}`}>
+      {/* Label e Indicador */}
       <div className="flex items-center justify-between">
         <label className="text-[11px] font-bold uppercase tracking-wider text-[#827B77]">
           {label}
         </label>
-        {value && (
-          <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3" /> Imagem ativa
+        {value ? (
+          <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium">
+            <CheckCircle2 className="w-3 h-3" /> Imagem vinculada
+          </span>
+        ) : (
+          <span className="text-[10px] text-[#827B77] bg-[#FAF7F2] border border-[#EADBCE] px-2 py-0.5 rounded-full">
+            Nenhuma imagem
           </span>
         )}
       </div>
 
-      {/* Input de arquivo invisível */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-        onChange={handleInputChange}
-        className="hidden"
-      />
+      {/* Caixa de instrução e orientação simples sobre a pasta public/images/ */}
+      <div className="rounded-2xl border border-[#EADBCE] bg-[#FAF7F2] p-3 text-xs text-[#292321] space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2 text-[#B77D82] font-semibold text-[11px]">
+            <FolderPlus className="w-4 h-4 shrink-0" />
+            <span>Como adicionar imagens do seu computador:</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowInstructions(!showInstructions)}
+            className="text-[11px] text-[#B77D82] hover:text-[#A3676C] underline cursor-pointer shrink-0"
+          >
+            {showInstructions ? "Ocultar detalhes" : "Ver passo a passo"}
+          </button>
+        </div>
 
-      {/* Se houver imagem definida: Prévia rica com opções */}
+        <p className="text-[11px] text-[#827B77] leading-relaxed">
+          Copie o arquivo de imagem do seu Mac/Windows para a pasta <code>public/images/</code> do projeto e informe abaixo o caminho correspondente (ex: <code>/images/nome-da-imagem.webp</code>).
+        </p>
+
+        {showInstructions && (
+          <div className="pt-2 border-t border-[#EADBCE]/80 text-[11px] text-[#827B77] space-y-1.5 animate-fade-in bg-white/60 p-2.5 rounded-xl">
+            <p className="flex items-center gap-1.5 font-medium text-[#292321]">
+              <span className="w-4 h-4 rounded-full bg-[#B77D82] text-white text-[10px] flex items-center justify-center shrink-0">1</span>
+              No seu computador, salve a imagem na pasta <code>public/images/</code> (ou <code>public/uploads/</code>).
+            </p>
+            <p className="flex items-center gap-1.5 font-medium text-[#292321]">
+              <span className="w-4 h-4 rounded-full bg-[#B77D82] text-white text-[10px] flex items-center justify-center shrink-0">2</span>
+              Digite o caminho relativo no campo abaixo (ex: <code>/images/banner-principal.webp</code>).
+            </p>
+            <p className="flex items-center gap-1.5 font-medium text-[#292321]">
+              <GitCommit className="w-4 h-4 text-[#B77D82] shrink-0" />
+              <span>Para publicar no ar: envie as alterações ao GitHub para a Vercel compilar e exibir as imagens para todas as alunas.</span>
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Campo de Entrada do Caminho Público da Imagem */}
+      <div className="space-y-1">
+        <div className="relative flex items-center">
+          <input
+            type="text"
+            value={value}
+            onChange={handleInputChange}
+            placeholder="Ex: /images/banner-home.webp ou /uploads/logo.png"
+            className="w-full pl-3 pr-20 py-2.5 rounded-xl border border-[#EADBCE] bg-[#FFFFFF] text-xs text-[#292321] focus:outline-none focus:ring-2 focus:ring-[#B77D82]/50 placeholder:text-[#827B77]/60"
+          />
+          {value && (
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="absolute right-2 px-2 py-1 rounded-lg text-rose-700 hover:bg-rose-50 text-[11px] font-medium transition cursor-pointer flex items-center gap-1"
+              title="Limpar campo"
+            >
+              <Trash2 className="w-3 h-3" />
+              Limpar
+            </button>
+          )}
+        </div>
+        {helperText && (
+          <p className="text-[10px] text-[#827B77]">{helperText}</p>
+        )}
+      </div>
+
+      {/* Pré-visualização da Imagem se houver valor preenchido */}
       {value ? (
-        <div className="relative rounded-2xl border border-[#EADBCE] bg-[#FAF7F2] p-2.5 space-y-2 group transition hover:border-[#B77D82]/50 shadow-2xs">
-          <div className={`relative w-full ${aspectClass} max-h-56 rounded-xl overflow-hidden bg-[#F3EAE3]`}>
+        <div className="relative rounded-2xl border border-[#EADBCE] bg-[#FFFFFF] p-2.5 space-y-2 group transition hover:border-[#B77D82]/50 shadow-2xs">
+          <div className={`relative w-full ${aspectClass} max-h-52 rounded-xl overflow-hidden bg-[#FAF7F2] border border-[#EADBCE]/50 flex items-center justify-center`}>
             <img
               src={value}
               alt={label}
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-101"
+              onError={(e) => {
+                // Caso a imagem ainda não exista na pasta local
+                const target = e.currentTarget;
+                target.style.display = "none";
+                const parent = target.parentElement;
+                if (parent && !parent.querySelector(".img-error-fallback")) {
+                  const fallback = document.createElement("div");
+                  fallback.className = "img-error-fallback p-4 text-center text-xs text-[#827B77] space-y-1";
+                  fallback.innerHTML = `<span class="block font-semibold text-[#292321]">Pré-visualização pendente</span><span class="block text-[11px]">Certifique-se de que o arquivo existe em <code>public${value}</code></span>`;
+                  parent.appendChild(fallback);
+                }
+              }}
             />
-            {uploading && (
-              <div className="absolute inset-0 bg-black/50 backdrop-blur-xs flex flex-col items-center justify-center text-white gap-2">
-                <Loader2 className="w-6 h-6 animate-spin text-[#EBD6D5]" />
-                <span className="text-xs font-medium">Substituindo imagem...</span>
-              </div>
-            )}
           </div>
 
-          {/* Barra de Ações: Substituir, Visualizar e Remover */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[#EADBCE]/70">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={uploading}
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#EADBCE] bg-white hover:bg-[#F7EEEE] text-[#B77D82] text-xs font-semibold transition cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Substituir imagem
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsViewingFull(true)}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-[#EADBCE] bg-white hover:bg-[#FAF7F2] text-[#827B77] hover:text-[#292321] text-xs font-medium transition cursor-pointer"
-                title="Visualizar em tamanho real"
-              >
-                <Eye className="w-3.5 h-3.5" />
-                Ver
-              </button>
-            </div>
-
+          <div className="flex items-center justify-between pt-1 border-t border-[#EADBCE]/70 text-xs">
             <button
               type="button"
-              disabled={uploading}
-              onClick={handleRemove}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-rose-700 hover:bg-rose-50 text-xs font-medium transition cursor-pointer"
+              onClick={() => setIsViewingFull(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] hover:bg-white text-[#827B77] hover:text-[#292321] text-xs font-medium transition cursor-pointer"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              Remover
+              <Eye className="w-3.5 h-3.5" />
+              Visualizar em tamanho real
             </button>
+
+            <a
+              href={value}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] text-[#B77D82] hover:text-[#A3676C] font-medium"
+            >
+              Abrir link
+              <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
         </div>
       ) : (
-        /* Se NÃO houver imagem definida: Dropzone para "Enviar imagem" */
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          onClick={() => !uploading && fileInputRef.current?.click()}
-          className={`relative border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center gap-2.5 transition cursor-pointer ${
-            dragOver
-              ? "border-[#B77D82] bg-[#F7EEEE]/70"
-              : "border-[#EADBCE] bg-[#FAF7F2]/70 hover:border-[#B77D82]/60 hover:bg-[#FAF7F2]"
-          }`}
-        >
-          {uploading ? (
-            <div className="flex flex-col items-center gap-2 py-3 text-[#B77D82]">
-              <Loader2 className="w-8 h-8 animate-spin" />
-              <span className="text-xs font-semibold">Enviando imagem...</span>
-              <span className="text-[11px] text-[#827B77]">Processando e gravando arquivo</span>
-            </div>
-          ) : (
-            <>
-              <div className="w-12 h-12 rounded-2xl bg-white border border-[#EADBCE] text-[#B77D82] flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform">
-                <Upload className="w-5 h-5" />
-              </div>
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold shadow-xs transition"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  Enviar imagem
-                </button>
-                <p className="text-[11px] text-[#827B77] mt-1.5">
-                  ou arraste e solte o arquivo aqui
-                </p>
-              </div>
-              <p className="text-[10px] text-[#827B77]/80">{helperText}</p>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Alerta de Erro */}
-      {error && (
-        <div className="p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs flex items-start gap-2 animate-fade-in">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-          <div className="flex-1">
-            <span>{error}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setError(null)}
-            className="text-rose-500 hover:text-rose-800 p-0.5"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+        <div className="border border-dashed border-[#EADBCE] rounded-2xl p-4 flex flex-col items-center justify-center text-center gap-1.5 bg-[#FAF7F2]/50 text-[#827B77]">
+          <ImageIcon className="w-6 h-6 text-[#827B77]/60" />
+          <p className="text-xs font-medium text-[#292321]">Nenhuma imagem vinculada</p>
+          <p className="text-[10px] text-[#827B77]">Digite o caminho público acima para exibir a imagem</p>
         </div>
       )}
 
@@ -274,7 +198,7 @@ export function ImageUploadField({
               <button
                 type="button"
                 onClick={() => setIsViewingFull(false)}
-                className="p-1 rounded-xl text-[#827B77] hover:bg-[#FAF7F2] hover:text-[#292321]"
+                className="p-1 rounded-xl text-[#827B77] hover:bg-[#FAF7F2] hover:text-[#292321] cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>

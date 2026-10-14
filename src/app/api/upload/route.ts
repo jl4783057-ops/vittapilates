@@ -66,22 +66,25 @@ export async function POST(request: NextRequest) {
 
     let publicUrl: string;
 
-    // Se o Cloudflare R2 estiver configurado no servidor, grava diretamente no armazenamento permanente.
-    const { isR2Configured, uploadImageToR2 } = await import("@/lib/r2");
-    if (isR2Configured) {
-      publicUrl = await uploadImageToR2(buffer, uniqueFileName, format.mime);
+    // Se o Vercel Blob estiver configurado (BLOB_READ_WRITE_TOKEN), envia diretamente para o bucket vittapilates-blob
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      const { put } = await import("@vercel/blob");
+      const blob = await put(`images/${uniqueFileName}`, buffer, {
+        access: "public",
+        contentType: format.mime,
+      });
+      publicUrl = blob.url;
     } else if (process.env.NODE_ENV === "development") {
-      // Fallback permitido apenas em desenvolvimento local: grava em public/uploads
+      // Fallback em ambiente de desenvolvimento local caso a variável BLOB_READ_WRITE_TOKEN ainda não tenha sido puxada localmente
       const uploadDir = path.join(process.cwd(), "public", "uploads");
       await fs.mkdir(uploadDir, { recursive: true });
       await fs.writeFile(path.join(uploadDir, uniqueFileName), buffer);
       publicUrl = `/uploads/${uniqueFileName}`;
     } else {
-      // Em produção, o sistema de arquivos é efêmero (Vercel/serverless) e arquivos locais desaparecem.
       return NextResponse.json(
         {
           error:
-            "Armazenamento Cloudflare R2 não configurado no servidor. Configure as credenciais do R2 para realizar uploads permanentes em produção.",
+            "Vercel Blob não conectado. Certifique-se de que o Blob 'vittapilates-blob' está conectado ao projeto com a variável BLOB_READ_WRITE_TOKEN.",
         },
         { status: 503 }
       );

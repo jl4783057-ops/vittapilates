@@ -541,7 +541,7 @@ export default function AdminLessonsPage() {
                 value={formData.thumbnailUrl}
                 onChange={(url) => setFormData({ ...formData, thumbnailUrl: url })}
                 aspectRatio="video"
-                helperText="Exemplo: /images/capa-aula.webp ou URL externa Unsplash (adicione o arquivo à pasta public/ e informe o caminho)"
+                helperText="Clique em 'Enviar imagem' para selecionar a capa da aula do seu Mac ou Windows (JPG, PNG ou WebP até 5 MB)."
               />
 
               <div className="space-y-1">

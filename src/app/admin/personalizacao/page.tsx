@@ -99,7 +99,7 @@ export default function AdminCustomizationPage() {
           <div className="pt-2">
             <ImageUploadField
               label="Logo da Marca (Imagem Horizontal / Principal)"
-              helperText="Exemplo: /images/logo.png ou /uploads/img-1791917900012-vitta.png (adicione o arquivo à pasta public/ e informe o caminho)"
+              helperText="Clique em 'Enviar imagem' para selecionar o logo do seu Mac ou Windows (PNG, WebP ou JPG até 5 MB)."
               value={form.logoUrl || ""}
               onChange={(url) => setForm({ ...form, logoUrl: url })}
               aspectRatio="wide"
@@ -138,7 +138,7 @@ export default function AdminCustomizationPage() {
           <div className="pt-2">
             <ImageUploadField
               label="Banner da Tela de Login"
-              helperText="Exemplo: /images/banner-login.webp ou URL externa Unsplash (adicione o arquivo à pasta public/ e informe o caminho)"
+              helperText="Clique em 'Enviar imagem' para selecionar o banner de destaque do seu computador (JPG, PNG ou WebP até 5 MB)."
               value={form.loginBannerUrl || ""}
               onChange={(url) => setForm({ ...form, loginBannerUrl: url })}
               aspectRatio="banner"

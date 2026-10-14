@@ -258,7 +258,7 @@ export default function AdminCategoriesPage() {
 
               <ImageUploadField
                 label="Imagem / Banner da Categoria"
-                helperText="Exemplo: /images/banner-categoria.webp ou URL externa Unsplash (adicione o arquivo à pasta public/ e informe o caminho)"
+                helperText="Clique em 'Enviar imagem' para selecionar a capa da categoria do seu Mac ou Windows (JPG, PNG ou WebP até 5 MB)."
                 value={formData.bannerUrl}
                 onChange={(url) => setFormData({ ...formData, bannerUrl: url })}
                 aspectRatio="banner"

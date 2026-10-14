@@ -16,6 +16,8 @@ export async function proxy(request: NextRequest) {
     "blob:",
     "https://images.unsplash.com",
     "https://*.supabase.co",
+    "https://*.public.blob.vercel-storage.com",
+    "https://*.blob.vercel-storage.com",
     ...(r2PublicDomain ? [r2PublicDomain] : []),
   ].join(" ");
 

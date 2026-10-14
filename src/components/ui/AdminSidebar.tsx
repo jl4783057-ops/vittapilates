@@ -15,6 +15,7 @@ import {
   HelpCircle,
   BarChart3,
   Settings,
+  Gift,
   Menu,
   X,
   LogOut,
@@ -30,6 +31,7 @@ export function AdminSidebar() {
     { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
     { label: "Alunas", href: "/admin/alunas", icon: Users },
     { label: "Assinaturas", href: "/admin/assinaturas", icon: CreditCard },
+    { label: "Cortesias (Influenciadoras)", href: "/admin/cortesias", icon: Gift },
     { label: "Categorias", href: "/admin/categorias", icon: FolderTree },
     { label: "Subcategorias", href: "/admin/subcategorias", icon: ListTree },
     { label: "Aulas e Vídeos", href: "/admin/aulas", icon: Video },
@@ -44,13 +46,23 @@ export function AdminSidebar() {
       {/* Brand Header */}
       <div className="p-5 border-b border-[#EADBCE] flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-[#B77D82] text-white flex items-center justify-center font-serif font-bold text-lg shadow-sm">
-            P
-          </div>
+          {siteSettings.logoUrl ? (
+            <img
+              src={siteSettings.logoUrl}
+              alt={siteSettings.platformName}
+              className="h-9 w-9 object-contain rounded-xl bg-[#FAF7F2] border border-[#EADBCE] p-0.5"
+            />
+          ) : (
+            <div className="w-9 h-9 rounded-xl bg-[#B77D82] text-white flex items-center justify-center font-serif font-bold text-lg shadow-sm">
+              P
+            </div>
+          )}
           <div>
-            <span className="font-serif font-bold text-base text-[#292321] block leading-tight">
-              {siteSettings.platformName}
-            </span>
+            {siteSettings.platformName && (
+              <span className="font-serif font-bold text-base text-[#292321] block leading-tight">
+                {siteSettings.platformName}
+              </span>
+            )}
             <span className="text-[10px] tracking-wider uppercase font-semibold text-[#B77D82]">
               Painel Administrativo
             </span>
@@ -111,9 +123,10 @@ export function AdminSidebar() {
         </Link>
 
         <button
-          onClick={() => {
+          onClick={async () => {
+            await fetch("/api/admin/session", { method: "DELETE" });
             logout();
-            window.location.href = "/login";
+            window.location.assign("/admin/login");
           }}
           className="w-full flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-medium text-rose-600 hover:bg-rose-50 transition"
         >

@@ -106,7 +106,7 @@ function LessonPlayerContent() {
         <div>
           <p className="text-xs font-medium text-[#827B77]">Status desta prática:</p>
           <p className="text-sm font-serif font-bold text-[#292321]">
-            {isCompleted ? "Aula concluída! 🌸" : "Ainda em andamento"}
+            {isCompleted ? "Aula concluída!" : "Ainda em andamento"}
           </p>
         </div>
 

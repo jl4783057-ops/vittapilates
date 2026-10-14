@@ -4,295 +4,302 @@ import React from "react";
 import Link from "next/link";
 import { useApp } from "@/lib/store/context";
 import {
-  Play,
-  Clock,
-  Sparkles,
   ArrowRight,
-  Flame,
-  CheckCircle2,
   BookOpen,
-  Calendar,
-  Layers,
+  ChevronRight,
+  Clock,
+  Flame,
+  Play,
+  Compass,
 } from "lucide-react";
+
+function getBahiaDayNumber() {
+  const dateInBahia = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bahia",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  return Math.floor(Date.parse(`${dateInBahia}T00:00:00Z`) / 86_400_000);
+}
 
 export default function StudentDashboardPage() {
   const { currentUser, lessons, categories } = useApp();
+  const publishedLessons = lessons.filter((lesson) => lesson.status === "publicado");
+  const rawName = currentUser?.name?.trim();
+  const userName = rawName
+    ? rawName.split(" ")[0].replace(/[^a-zA-ZÀ-ÿ]/g, "") || "Aluna"
+    : currentUser?.email
+    ? currentUser.email.split("@")[0].split(".")[0].replace(/[^a-zA-ZÀ-ÿ]/g, "") || "Aluna"
+    : "Aluna";
+  const completedLessonIds = new Set(currentUser?.completedLessonIds || []);
 
-  const userName = currentUser?.name ? currentUser.name.split(" ")[0] : "Aluna";
-  const completedCount = currentUser?.completedLessonIds?.length || 0;
-
-  // Aula atual para continuar
   const currentLesson =
-    lessons.find((l) => l.id === currentUser?.lastLessonId) ||
-    lessons[0];
+    publishedLessons.find((lesson) => lesson.id === currentUser?.lastLessonId) || publishedLessons[0];
+  const currentCategory = categories.find((category) => category.id === currentLesson?.categoryId);
 
-  // Categoria da aula atual
-  const currentCategory = categories.find((c) => c.id === currentLesson?.categoryId);
+  // A aula recomendada usa o dia local da Bahia como índice, então a sugestão diária varia de forma consistente.
+  const recommendationOptions = publishedLessons.filter((lesson) => lesson.id !== currentLesson?.id);
+  const recommendedLesson = recommendationOptions.length
+    ? recommendationOptions[getBahiaDayNumber() % recommendationOptions.length]
+    : currentLesson;
+  const recommendedCategory = categories.find(
+    (category) => category.id === recommendedLesson?.categoryId,
+  );
 
-  // Treino recomendado de hoje
-  const recommendedLesson =
-    lessons.find((l) => l.id !== currentLesson?.id && l.status === "publicado") ||
-    lessons[1] ||
-    lessons[0];
-
-  const recommendedCategory = categories.find((c) => c.id === recommendedLesson?.categoryId);
-
-  // Programas iniciados
-  const activeCategories = categories.slice(0, 3);
+  // Categorias de objetivo ativas
+  const programCategories = categories
+    .filter((category) => category.published && publishedLessons.some((lesson) => lesson.categoryId === category.id))
+    .slice(0, 4);
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Saudação e Frase Acolhedora */}
-      <section className="space-y-1.5 pt-2">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
-            Olá, {userName}! 🌸
-          </h1>
-          <div className="flex items-center gap-1.5 bg-[#FFFFFF] border border-[#EADBCE] px-3 py-1 rounded-full text-xs font-semibold text-[#B77D82] shadow-xs">
-            <Flame className="w-3.5 h-3.5 fill-[#B77D82]" />
-            <span>{completedCount} aulas concluídas</span>
+    <div className="space-y-6 sm:space-y-7 animate-fade-in py-1">
+      {/* 1. Saudação acolhedora e badge de consistência */}
+      <section className="space-y-1.5 pt-1">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82] block">
+              Bem-vinda de volta
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321] tracking-tight">
+              Olá, {userName}!
+            </h1>
+          </div>
+          <div className="flex items-center gap-1.5 bg-white border border-[#EADBCE] px-3.5 py-1.5 rounded-full text-xs font-semibold text-[#B77D82] shadow-xs shrink-0">
+            <Flame className="w-4 h-4 fill-[#B77D82]" />
+            <span>{currentUser?.completedLessonIds?.length || 0} concluídas</span>
           </div>
         </div>
-        <p className="text-sm text-[#827B77] leading-relaxed">
-          Que bom ter você aqui hoje. Respire fundo, reserve este momento para você e respeite o ritmo do seu corpo.
+        <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-md">
+          Respire fundo, reserve este momento para você e respeite o ritmo natural do seu corpo.
         </p>
       </section>
 
-      {/* Card "Continue seu treino" */}
+      {/* 2. Destaque Visual Principal: Continuar Treino de Onde Parou */}
       {currentLesson && (
-        <section aria-labelledby="continue-training-heading">
-          <div className="flex items-center justify-between mb-2">
+        <section aria-labelledby="continue-training-heading" className="space-y-2.5">
+          <div className="flex items-center justify-between">
             <h2 id="continue-training-heading" className="text-xs font-bold uppercase tracking-wider text-[#827B77]">
-              Continue seu treino
+              Continuar Treino
             </h2>
-            <span className="text-[11px] text-[#B77D82] font-semibold">
-              Última prática ativa
-            </span>
+            <Link
+              href="/aluna/treinos"
+              className="text-xs text-[#B77D82] font-semibold hover:underline"
+            >
+              Meus treinos
+            </Link>
           </div>
 
-          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] overflow-hidden shadow-[0_6px_24px_rgba(41,35,33,0.05)] hover:shadow-md transition">
-            <div className="relative h-44 w-full bg-[#F3EAE3]">
+          <article className="relative bg-white rounded-3xl border border-[#EADBCE] overflow-hidden shadow-[0_8px_30px_rgba(41,35,33,0.06)] group transition hover:border-[#B77D82]/50">
+            {/* Imagem de Capa do Treino */}
+            <div className="relative aspect-[16/9] w-full bg-[#F3EAE3] overflow-hidden">
               <img
                 src={currentLesson.thumbnailUrl}
                 alt={currentLesson.title}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-103"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-              <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-xs text-[#292321] text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-xs">
-                <span>{currentCategory?.name || "Pilates"}</span>
-              </div>
-              <div className="absolute bottom-3 left-3 right-3 text-white">
-                <p className="text-xs font-medium text-white/80">Aula atual:</p>
-                <h3 className="font-serif font-bold text-base line-clamp-1">
-                  {currentLesson.title}
-                </h3>
-              </div>
-            </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
 
-            <div className="p-4 space-y-3">
-              {/* Barra de progresso */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs text-[#827B77]">
-                  <span>Progresso do programa</span>
-                  <span className="font-semibold text-[#B77D82]">65%</span>
-                </div>
-                <div className="w-full h-2 bg-[#F3EAE3] rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#B77D82] rounded-full transition-all duration-500"
-                    style={{ width: "65%" }}
-                  />
-                </div>
+              <div className="absolute top-3.5 left-3.5 flex items-center gap-2">
+                <span className="rounded-full bg-white/90 backdrop-blur-md px-3 py-1 text-[11px] font-semibold text-[#292321] shadow-xs">
+                  {currentCategory?.name || "Pilates em Casa"}
+                </span>
               </div>
 
-              <div className="flex items-center justify-between pt-1">
-                <div className="flex items-center gap-3 text-xs text-[#827B77]">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-[#B77D82]" />
-                    {currentLesson.durationMinutes} min
-                  </span>
-                  <span className="capitalize px-2 py-0.5 rounded-full bg-[#F3EAE3] text-[#292321] text-[11px] font-medium">
-                    {currentLesson.level}
-                  </span>
-                </div>
+              <span className="absolute top-3.5 right-3.5 rounded-full bg-black/45 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-md">
+                {currentLesson.durationMinutes} min
+              </span>
 
-                <Link
-                  href={`/aluna/aula/${currentLesson.id}`}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold shadow-xs transition group cursor-pointer"
-                >
-                  <Play className="w-3.5 h-3.5 fill-white group-hover:scale-110 transition-transform" />
-                  <span>Continuar Treino</span>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Acesso em Destaque ao Plano Personalizado */}
-      <section className="bg-gradient-to-r from-[#FAF7F2] via-[#F7EEEE] to-[#F3EAE3] p-4 sm:p-5 rounded-3xl border border-[#EBD6D5] flex items-center justify-between gap-3 shadow-xs">
-        <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-[#B77D82]">
-            <Sparkles className="w-4 h-4 fill-[#B77D82]/30" />
-            <h2 className="font-serif font-bold text-sm text-[#292321]">
-              {currentUser?.customPlan ? "Seu Plano Personalizado Está Ativo" : "Monte sua Rotina Personalizada"}
-            </h2>
-          </div>
-          <p className="text-xs text-[#827B77] max-w-xs leading-relaxed">
-            {currentUser?.customPlan
-              ? `Focado em ${currentUser.customPlan.mainGoal} • ${currentUser.customPlan.weeklyDays}x por semana.`
-              : "Descubra o ponto de partida ideal respondendo ao quiz de 1 minuto."}
-          </p>
-        </div>
-        <Link
-          href="/quiz"
-          className="shrink-0 px-3.5 py-2 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold shadow-xs transition"
-        >
-          {currentUser?.customPlan ? "Ver Plano" : "Fazer Quiz"}
-        </Link>
-      </section>
-
-      {/* Seção “Treino recomendado de hoje” */}
-      {recommendedLesson && (
-        <section aria-labelledby="recommended-lesson-heading" className="space-y-2.5">
-          <div className="flex items-center justify-between">
-            <h2 id="recommended-lesson-heading" className="text-xs font-bold uppercase tracking-wider text-[#827B77]">
-              Treino recomendado de hoje
-            </h2>
-            <span className="text-xs text-[#B77D82] font-medium">
-              Sugestão diária
-            </span>
-          </div>
-
-          <div className="bg-[#FFFFFF] p-3.5 rounded-3xl border border-[#EADBCE] flex items-center gap-3.5 shadow-xs hover:border-[#B77D82]/40 transition">
-            <div className="relative w-24 h-24 rounded-2xl overflow-hidden shrink-0 bg-[#F3EAE3]">
-              <img
-                src={recommendedLesson.thumbnailUrl}
-                alt={recommendedLesson.title}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-black/15" />
+              {/* Botão de Play em Destaque Flutuante */}
               <Link
-                href={`/aluna/aula/${recommendedLesson.id}`}
+                href={`/aluna/aula/${currentLesson.id}`}
                 className="absolute inset-0 flex items-center justify-center text-white"
-                aria-label="Assistir aula"
+                aria-label={`Assistir aula ${currentLesson.title}`}
               >
-                <div className="w-8 h-8 rounded-full bg-[#B77D82]/90 flex items-center justify-center shadow-sm">
-                  <Play className="w-4 h-4 fill-white ml-0.5" />
+                <div className="w-14 h-14 rounded-full bg-[#B77D82] text-white flex items-center justify-center shadow-lg transition-transform duration-300 group-hover:scale-110">
+                  <Play className="w-6 h-6 fill-white ml-1" />
                 </div>
               </Link>
             </div>
 
-            <div className="flex-1 min-w-0 space-y-1">
-              <span className="text-[10px] font-semibold text-[#B77D82] uppercase tracking-wider">
+            {/* Conteúdo do Card */}
+            <div className="p-5 space-y-3.5">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-xs text-[#827B77]">
+                  <span className="capitalize font-medium text-[#B77D82]">
+                    Prática guiada
+                  </span>
+                  <span>•</span>
+                  <span className="capitalize">Nível {currentLesson.level}</span>
+                </div>
+                <h3 className="font-serif text-xl sm:text-2xl font-bold leading-snug text-[#292321] group-hover:text-[#B77D82] transition-colors">
+                  {currentLesson.title}
+                </h3>
+                {currentLesson.description && (
+                  <p className="text-xs sm:text-sm text-[#827B77] line-clamp-2 leading-relaxed">
+                    {currentLesson.description}
+                  </p>
+                )}
+              </div>
+
+              <div className="pt-2 flex items-center justify-between border-t border-[#FAF7F2]">
+                <div className="flex items-center gap-1.5 text-xs text-[#827B77]">
+                  <Clock className="w-4 h-4 text-[#B77D82]" />
+                  <span>Duração: {currentLesson.durationMinutes} minutos</span>
+                </div>
+
+                <Link
+                  href={`/aluna/aula/${currentLesson.id}`}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#B77D82] px-5 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#A3676C]"
+                >
+                  <span>Continuar aula</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </div>
+          </article>
+        </section>
+      )}
+
+      {/* 3. Bloco de Treino Recomendado de Hoje */}
+      {recommendedLesson && (
+        <section aria-labelledby="recommended-lesson-heading" className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <h2 id="recommended-lesson-heading" className="text-xs font-bold uppercase tracking-wider text-[#827B77]">
+              Recomendado para Hoje
+            </h2>
+            <span className="text-[11px] text-[#B77D82] font-semibold">Sugestão diária</span>
+          </div>
+
+          <article className="flex items-center gap-3.5 rounded-3xl border border-[#EADBCE] bg-white p-3.5 shadow-2xs transition hover:border-[#B77D82]/50 group">
+            <div className="relative h-20 w-20 sm:h-22 sm:w-22 shrink-0 overflow-hidden rounded-2xl bg-[#F3EAE3]">
+              <img
+                src={recommendedLesson.thumbnailUrl}
+                alt={recommendedLesson.title}
+                className="h-full w-full object-cover group-hover:scale-105 transition duration-300"
+              />
+              <div className="absolute inset-0 bg-black/20" />
+              <Link
+                href={`/aluna/aula/${recommendedLesson.id}`}
+                className="absolute inset-0 flex items-center justify-center text-white"
+                aria-label="Assistir aula recomendada"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#B77D82] shadow-xs group-hover:scale-110 transition-transform">
+                  <Play className="h-4 w-4 fill-white ml-0.5" />
+                </span>
+              </Link>
+            </div>
+
+            <div className="min-w-0 flex-1 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#B77D82]">
                 {recommendedCategory?.name || "Recomendado"}
               </span>
-              <h3 className="font-serif font-bold text-sm text-[#292321] line-clamp-1">
+              <h3 className="line-clamp-1 font-serif text-sm sm:text-base font-bold text-[#292321] group-hover:text-[#B77D82] transition-colors">
                 {recommendedLesson.title}
               </h3>
-              <p className="text-xs text-[#827B77] line-clamp-1">
-                {recommendedLesson.description}
-              </p>
-
-              <div className="flex items-center gap-3 pt-1 text-xs text-[#827B77]">
+              <div className="flex items-center gap-3 text-xs text-[#827B77]">
                 <span className="flex items-center gap-1 font-medium">
-                  <Clock className="w-3.5 h-3.5 text-[#B77D82]" />
+                  <Clock className="h-3.5 w-3.5 text-[#B77D82]" />
                   {recommendedLesson.durationMinutes} min
                 </span>
-                <span className="capitalize text-[11px] bg-[#FAF7F2] px-2 py-0.5 rounded-full border border-[#EADBCE]">
-                  {recommendedLesson.level}
-                </span>
+                <span className="capitalize">{recommendedLesson.level}</span>
               </div>
             </div>
 
             <Link
               href={`/aluna/aula/${recommendedLesson.id}`}
-              className="p-2.5 rounded-full bg-[#FAF7F2] hover:bg-[#F7EEEE] text-[#B77D82] transition"
-              title="Assistir agora"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FAF7F2] text-[#827B77] transition group-hover:bg-[#B77D82] group-hover:text-white"
+              aria-label="Assistir agora"
             >
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="h-4 w-4" />
             </Link>
-          </div>
+          </article>
         </section>
       )}
 
-      {/* Programas em Andamento e Acesso à Biblioteca */}
-      <section aria-labelledby="programs-started-heading" className="space-y-3">
+      {/* 4. Categorias de Objetivo (sem barras ou percentuais de progresso) */}
+      <section aria-labelledby="objectives-heading" className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 id="programs-started-heading" className="text-xs font-bold uppercase tracking-wider text-[#827B77]">
-            Programas iniciados
-          </h2>
+          <div>
+            <h2 id="objectives-heading" className="text-xs font-bold uppercase tracking-wider text-[#827B77]">
+              Objetivos & Programas
+            </h2>
+            <p className="text-[11px] text-[#827B77] mt-0.5">
+              Escolha seu foco para acessar os treinos específicos.
+            </p>
+          </div>
           <Link
             href="/aluna/programas"
-            className="text-xs font-semibold text-[#B77D82] hover:underline flex items-center gap-1"
+            className="flex items-center gap-1 text-xs font-semibold text-[#B77D82] hover:underline"
           >
-            Ver biblioteca completa
-            <ArrowRight className="w-3 h-3" />
+            Explorar todos <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {activeCategories.map((cat, idx) => {
-            const progress = [70, 45, 20][idx] || 30;
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {programCategories.map((category) => {
+            const categoryLessons = publishedLessons.filter((lesson) => lesson.categoryId === category.id);
+            const levels = Array.from(new Set(categoryLessons.map((lesson) => lesson.level)));
+            const levelLabel = levels.length === 1
+              ? levels[0].charAt(0).toUpperCase() + levels[0].slice(1)
+              : "Todos os níveis";
+
             return (
               <Link
-                key={cat.id}
-                href={`/aluna/programas?categoria=${cat.slug}`}
-                className="bg-[#FFFFFF] p-3.5 rounded-2xl border border-[#EADBCE] space-y-2.5 hover:border-[#B77D82]/50 hover:shadow-xs transition block group"
+                key={category.id}
+                href={`/aluna/programas?categoria=${category.slug}`}
+                className="group relative flex items-center gap-3.5 rounded-3xl border border-[#EADBCE] bg-white p-3.5 shadow-2xs transition hover:border-[#B77D82]/50 hover:shadow-xs"
               >
-                <div className="relative h-24 w-full rounded-xl overflow-hidden bg-[#F3EAE3]">
-                  {cat.bannerUrl && (
+                <div className="h-18 w-18 shrink-0 overflow-hidden rounded-2xl bg-[#F3EAE3]">
+                  {category.bannerUrl ? (
                     <img
-                      src={cat.bannerUrl}
-                      alt={cat.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      src={category.bannerUrl}
+                      alt={category.name}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-[#B77D82]">
+                      <Compass className="w-6 h-6" />
+                    </div>
                   )}
-                  <div className="absolute inset-0 bg-black/25" />
-                  <div className="absolute bottom-2 left-2 text-white font-serif font-bold text-xs">
-                    {cat.name}
-                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[11px] text-[#827B77]">
-                    <span>Conclusão</span>
-                    <span className="font-semibold text-[#B77D82]">{progress}%</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-[#FAF7F2] border border-[#EADBCE]/50 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#B77D82] rounded-full"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <h3 className="line-clamp-1 font-serif text-base font-bold text-[#292321] group-hover:text-[#B77D82] transition-colors">
+                    {category.name}
+                  </h3>
+                  <p className="text-xs text-[#827B77]">
+                    {categoryLessons.length} aulas <span className="mx-1">•</span> {levelLabel}
+                  </p>
                 </div>
+
+                <ChevronRight className="h-5 w-5 shrink-0 text-[#827B77] transition group-hover:translate-x-1 group-hover:text-[#B77D82]" />
               </Link>
             );
           })}
         </div>
       </section>
 
-      {/* Botão amplo para a Biblioteca */}
-      <section className="pt-1">
-        <Link
-          href="/aluna/programas"
-          className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#FFFFFF] border border-[#EADBCE] text-[#292321] hover:border-[#B77D82] hover:bg-[#FAF7F2] transition shadow-xs group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#F7EEEE] text-[#B77D82] flex items-center justify-center">
-              <BookOpen className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="font-serif font-bold text-sm text-[#292321]">
-                Explorar Toda a Biblioteca
-              </p>
-              <p className="text-xs text-[#827B77]">
-                8 categorias oficiais, subcategorias e filtros de duração
-              </p>
-            </div>
-          </div>
-          <ArrowRight className="w-5 h-5 text-[#827B77] group-hover:text-[#B77D82] group-hover:translate-x-1 transition" />
-        </Link>
-      </section>
+      {/* 5. Atalho para a Biblioteca Completa */}
+      <Link
+        href="/aluna/programas"
+        className="group flex w-full items-center justify-between rounded-3xl border border-[#EADBCE] bg-gradient-to-r from-white via-white to-[#FAF7F2] p-4 text-[#292321] shadow-2xs transition hover:border-[#B77D82]"
+      >
+        <span className="flex items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#F7EEEE] text-[#B77D82] shadow-2xs">
+            <BookOpen className="h-5 w-5" />
+          </span>
+          <span>
+            <span className="block font-serif text-base font-bold text-[#292321]">
+              Explorar Todos os Objetivos e Focos
+            </span>
+            <span className="block text-xs text-[#827B77]">
+              Veja todas as categorias, subcategorias e aulas disponíveis
+            </span>
+          </span>
+        </span>
+        <ArrowRight className="h-5 w-5 text-[#827B77] transition group-hover:translate-x-1 group-hover:text-[#B77D82]" />
+      </Link>
     </div>
   );
 }

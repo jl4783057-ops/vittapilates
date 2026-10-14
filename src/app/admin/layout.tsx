@@ -1,20 +1,34 @@
-"use client";
-
 import React, { Suspense } from "react";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { AdminSidebar } from "@/components/ui/AdminSidebar";
-import { QuickRoleSwitcher } from "@/components/ui/QuickRoleSwitcher";
+import { ADMIN_SESSION_COOKIE, verifyAdminSessionToken } from "@/lib/admin-session";
 
-export default function AdminLayout({
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const headerList = await headers();
+  const pathname = headerList.get("x-pathname") || "";
+
+  // Se for a tela de login administrativo (/admin/login), renderiza sem a sidebar e sem redirecionar
+  if (pathname === "/admin/login" || pathname.startsWith("/admin/login")) {
+    return (
+      <div className="min-h-screen bg-[#FAF7F2] antialiased">
+        <Suspense fallback={null}>{children}</Suspense>
+      </div>
+    );
+  }
+
+  const cookieStore = await cookies();
+  const session = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+  if (!verifyAdminSessionToken(session)) {
+    redirect("/admin/login");
+  }
+
   return (
     <div className="min-h-screen bg-[#FAF7F2] flex flex-col antialiased">
-      <Suspense fallback={<div className="h-7 bg-[#292321]" />}>
-        <QuickRoleSwitcher />
-      </Suspense>
-
       <div className="flex-1 flex flex-col lg:flex-row">
         <Suspense fallback={<div className="w-64 h-screen bg-white" />}>
           <AdminSidebar />

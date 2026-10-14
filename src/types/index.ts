@@ -35,6 +35,7 @@ export interface Subcategory {
   slug: string;
   name: string;
   description?: string;
+  imageUrl?: string;
   order: number;
   published: boolean;
 }
@@ -85,6 +86,7 @@ export interface QuizQuestion {
   order: number;
   title: string;
   helperText?: string;
+  imageUrl?: string;
   type: QuizQuestionType;
   required: boolean;
   options: QuizOption[];

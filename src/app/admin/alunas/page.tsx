@@ -17,6 +17,7 @@ import {
   Sparkles,
   UserCheck,
 } from "lucide-react";
+import ImageUploadField from "@/components/ui/ImageUploadField";
 
 export default function AdminStudentsPage() {
   const { users, setUsers } = useApp();
@@ -48,6 +49,15 @@ export default function AdminStudentsPage() {
     );
     if (selectedUser?.id === userId) {
       setSelectedUser((prev) => prev ? { ...prev, subscriptionPlan: newPlan } : null);
+    }
+  };
+
+  const handleUpdateAvatar = (userId: string, avatarUrl: string) => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, avatarUrl } : u))
+    );
+    if (selectedUser?.id === userId) {
+      setSelectedUser((prev) => prev ? { ...prev, avatarUrl } : null);
     }
   };
 
@@ -211,6 +221,15 @@ export default function AdminStudentsPage() {
                 Fechar
               </button>
             </div>
+
+            {/* Foto de Perfil */}
+            <ImageUploadField
+              label="Foto de Perfil da Aluna"
+              value={selectedUser.avatarUrl || ""}
+              onChange={(url) => handleUpdateAvatar(selectedUser.id, url)}
+              aspectRatio="square"
+              helperText="Foto de perfil da usuária (JPG, PNG ou WebP até 5MB)."
+            />
 
             {/* Alterar Status */}
             <div className="space-y-1.5">

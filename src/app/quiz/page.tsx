@@ -248,6 +248,17 @@ export default function QuizFlowPage() {
               </div>
             </div>
 
+            {/* Imagem Ilustrativa da Etapa */}
+            {currentQuestion.imageUrl && (
+              <div className="w-full h-44 sm:h-52 rounded-2xl overflow-hidden border border-[#EADBCE] bg-[#FAF7F2]">
+                <img
+                  src={currentQuestion.imageUrl}
+                  alt={currentQuestion.title}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+
             {/* Enunciado e Texto Auxiliar */}
             <div className="space-y-1.5">
               <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#292321] leading-snug">

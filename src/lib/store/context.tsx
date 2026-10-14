@@ -136,7 +136,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         id: `user-${Date.now()}`,
         name: email.split("@")[0].replace(".", " "),
         email: email,
-        role: role || (email.includes("admin") ? "admin" : "aluna"),
+        role: role || "aluna",
         createdAt: new Date().toISOString(),
         subscriptionStatus: "active",
         subscriptionPlan: "Mensal",

@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   Calendar,
 } from "lucide-react";
+import ImageUploadField from "@/components/ui/ImageUploadField";
 
 export default function StudentProfilePage() {
   const router = useRouter();
@@ -25,13 +26,14 @@ export default function StudentProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(currentUser?.name || "Mariana Silveira");
   const [phone, setPhone] = useState(currentUser?.phone || "(11) 98765-4321");
+  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatarUrl || "");
   const [notifications, setNotifications] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    updateUserProfile({ name, phone });
+    updateUserProfile({ name, phone, avatarUrl });
     setIsEditing(false);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
@@ -99,7 +101,15 @@ export default function StudentProfilePage() {
 
         {/* Formulário de Edição */}
         {isEditing && (
-          <form onSubmit={handleSave} className="space-y-3 pt-3 border-t border-[#FAF7F2]">
+          <form onSubmit={handleSave} className="space-y-4 pt-3 border-t border-[#FAF7F2]">
+            <ImageUploadField
+              label="Foto de Perfil"
+              value={avatarUrl}
+              onChange={(url) => setAvatarUrl(url)}
+              aspectRatio="square"
+              helperText="Envie uma foto sua (JPG, PNG ou WebP até 5MB)."
+            />
+
             <div className="space-y-1">
               <label className="text-[11px] font-bold uppercase tracking-wider text-[#827B77]">
                 Nome Completo

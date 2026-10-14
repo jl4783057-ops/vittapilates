@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useApp } from "@/lib/store/context";
 import { Category } from "@/types";
+import { ImageUploadField } from "@/components/ui/ImageUploadField";
 import {
   FolderTree,
   Plus,
@@ -255,18 +256,13 @@ export default function AdminCategoriesPage() {
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-[#827B77] block">
-                  URL da Imagem / Banner
-                </label>
-                <input
-                  type="url"
-                  value={formData.bannerUrl}
-                  onChange={(e) => setFormData({ ...formData, bannerUrl: e.target.value })}
-                  placeholder="https://..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
-                />
-              </div>
+              <ImageUploadField
+                label="Imagem / Banner da Categoria"
+                helperText="Envie o banner de apresentação do programa (JPG, PNG ou WebP até 5 MB)"
+                value={formData.bannerUrl}
+                onChange={(url) => setFormData({ ...formData, bannerUrl: url })}
+                aspectRatio="banner"
+              />
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">

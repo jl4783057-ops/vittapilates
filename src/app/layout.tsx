@@ -41,12 +41,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" className={`${playfair.variable} ${inter.variable} h-full`}>
+    <html lang="pt-BR" className={`${playfair.variable} ${inter.variable} h-full`} suppressHydrationWarning>
       <head>
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
-      <body className="min-h-full flex flex-col bg-[#FAF7F2] text-[#292321] selection:bg-[#EBD6D5] selection:text-[#292321]">
+      <body
+        suppressHydrationWarning
+        className="min-h-full flex flex-col bg-[#FAF7F2] text-[#292321] selection:bg-[#EBD6D5] selection:text-[#292321]"
+      >
         <AppProvider>
           {children}
         </AppProvider>

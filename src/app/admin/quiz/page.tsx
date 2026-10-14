@@ -18,6 +18,7 @@ import {
   ArrowRight,
   ShieldCheck,
 } from "lucide-react";
+import ImageUploadField from "@/components/ui/ImageUploadField";
 
 export default function AdminQuizEditorPage() {
   const { quizQuestions, setQuizQuestions, addQuizQuestion, updateQuizQuestion, deleteQuizQuestion } = useApp();
@@ -31,6 +32,7 @@ export default function AdminQuizEditorPage() {
   const [formData, setFormData] = useState<{
     title: string;
     helperText: string;
+    imageUrl: string;
     type: QuizQuestionType;
     required: boolean;
     privacyNotice: string;
@@ -38,6 +40,7 @@ export default function AdminQuizEditorPage() {
   }>({
     title: "",
     helperText: "",
+    imageUrl: "",
     type: "single",
     required: true,
     privacyNotice: "",
@@ -51,6 +54,7 @@ export default function AdminQuizEditorPage() {
     setFormData({
       title: "",
       helperText: "",
+      imageUrl: "",
       type: "single",
       required: true,
       privacyNotice: "",
@@ -67,6 +71,7 @@ export default function AdminQuizEditorPage() {
     setFormData({
       title: q.title,
       helperText: q.helperText || "",
+      imageUrl: q.imageUrl || "",
       type: q.type,
       required: q.required,
       privacyNotice: q.privacyNotice || "",
@@ -110,6 +115,7 @@ export default function AdminQuizEditorPage() {
         order: quizQuestions.length + 1,
         title: formData.title.trim(),
         helperText: formData.helperText.trim(),
+        imageUrl: formData.imageUrl?.trim() || undefined,
         type: formData.type,
         required: formData.required,
         privacyNotice: formData.privacyNotice.trim(),
@@ -122,6 +128,7 @@ export default function AdminQuizEditorPage() {
       updateQuizQuestion(editingQuestion.id, {
         title: formData.title.trim(),
         helperText: formData.helperText.trim(),
+        imageUrl: formData.imageUrl?.trim() || undefined,
         type: formData.type,
         required: formData.required,
         privacyNotice: formData.privacyNotice.trim(),
@@ -182,9 +189,18 @@ export default function AdminQuizEditorPage() {
             className="bg-[#FFFFFF] p-5 rounded-3xl border border-[#EADBCE] shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-[#B77D82]/50 transition"
           >
             <div className="flex items-start gap-3.5">
-              <div className="w-8 h-8 rounded-full bg-[#F3EAE3] text-[#B77D82] font-semibold text-xs flex items-center justify-center shrink-0">
-                {idx + 1}
-              </div>
+              {q.imageUrl ? (
+                <div className="w-14 h-14 rounded-2xl overflow-hidden border border-[#EADBCE] shrink-0 bg-[#FAF7F2] relative">
+                  <img src={q.imageUrl} alt={q.title} className="w-full h-full object-cover" />
+                  <span className="absolute bottom-0 right-0 bg-[#292321]/70 text-white text-[9px] font-bold px-1 rounded-tl-md">
+                    #{idx + 1}
+                  </span>
+                </div>
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-[#F3EAE3] text-[#B77D82] font-semibold text-xs flex items-center justify-center shrink-0">
+                  {idx + 1}
+                </div>
+              )}
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-[#B77D82] bg-[#F7EEEE] px-2 py-0.5 rounded-full">
@@ -282,6 +298,14 @@ export default function AdminQuizEditorPage() {
                   className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
                 />
               </div>
+
+              <ImageUploadField
+                label="Imagem Ilustrativa da Etapa (Opcional)"
+                value={formData.imageUrl}
+                onChange={(url) => setFormData({ ...formData, imageUrl: url })}
+                aspectRatio="banner"
+                helperText="Ilustração ou foto temática exibida no topo desta etapa (JPG, PNG ou WebP até 5MB)."
+              />
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -407,7 +431,16 @@ export default function AdminQuizEditorPage() {
                   />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-2">
+                  {quizQuestions[previewStep]?.imageUrl && (
+                    <div className="w-full h-28 rounded-xl overflow-hidden border border-[#EADBCE] bg-[#FAF7F2]">
+                      <img
+                        src={quizQuestions[previewStep]?.imageUrl}
+                        alt="Preview etapa"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
                   <h4 className="font-serif font-bold text-base text-[#292321]">
                     {quizQuestions[previewStep]?.title}
                   </h4>

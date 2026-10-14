@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useApp } from "@/lib/store/context";
 import { Subcategory } from "@/types";
+import { ImageUploadField } from "@/components/ui/ImageUploadField";
 import {
   ListTree,
   Plus,
@@ -11,7 +12,7 @@ import {
   Eye,
   EyeOff,
   X,
-  Filter,
+  ImageIcon,
 } from "lucide-react";
 
 export default function AdminSubcategoriesPage() {
@@ -25,6 +26,7 @@ export default function AdminSubcategoriesPage() {
     slug: "",
     categoryId: categories[0]?.id || "cat-1",
     description: "",
+    imageUrl: "",
     order: 1,
     published: true,
   });
@@ -40,6 +42,7 @@ export default function AdminSubcategoriesPage() {
       slug: "",
       categoryId: filterCat !== "todas" ? filterCat : categories[0]?.id || "cat-1",
       description: "",
+      imageUrl: "",
       order: subcategories.length + 1,
       published: true,
     });
@@ -53,6 +56,7 @@ export default function AdminSubcategoriesPage() {
       slug: sub.slug,
       categoryId: sub.categoryId,
       description: sub.description || "",
+      imageUrl: sub.imageUrl || "",
       order: sub.order,
       published: sub.published,
     });
@@ -67,6 +71,7 @@ export default function AdminSubcategoriesPage() {
         slug: formData.slug.trim() || formData.name.toLowerCase().replace(/\s+/g, "-"),
         categoryId: formData.categoryId,
         description: formData.description,
+        imageUrl: formData.imageUrl || undefined,
         order: Number(formData.order),
         published: formData.published,
       };
@@ -78,6 +83,7 @@ export default function AdminSubcategoriesPage() {
         slug: formData.slug.trim(),
         categoryId: formData.categoryId,
         description: formData.description,
+        imageUrl: formData.imageUrl || undefined,
         order: Number(formData.order),
         published: formData.published,
       });
@@ -97,25 +103,26 @@ export default function AdminSubcategoriesPage() {
             Gestão de Subcategorias
           </h1>
           <p className="text-xs sm:text-sm text-[#827B77] mt-1">
-            Mapeamento dos focos específicos dentro de cada categoria principal.
+            Mapeamento dos focos específicos dentro de cada categoria principal com upload de imagem.
           </p>
         </div>
-
         <button
           onClick={handleOpenCreate}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold shadow-xs transition"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold shadow-xs transition cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           Nova Subcategoria
         </button>
       </div>
 
-      {/* Filtro por Categoria Principal */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs">
-        <span className="text-[#827B77] font-semibold shrink-0">Filtrar por Categoria:</span>
+      {/* Filtro por Categoria Mãe */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs scrollbar-none">
+        <span className="text-[#827B77] font-semibold text-[11px] uppercase tracking-wider shrink-0 mr-1">
+          Filtrar por Categoria:
+        </span>
         <button
           onClick={() => setFilterCat("todas")}
-          className={`shrink-0 px-3 py-1.5 rounded-xl font-semibold transition ${
+          className={`shrink-0 px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer ${
             filterCat === "todas"
               ? "bg-[#B77D82] text-white"
               : "bg-[#FFFFFF] text-[#827B77] border border-[#EADBCE]"
@@ -127,7 +134,7 @@ export default function AdminSubcategoriesPage() {
           <button
             key={c.id}
             onClick={() => setFilterCat(c.id)}
-            className={`shrink-0 px-3 py-1.5 rounded-xl font-semibold transition ${
+            className={`shrink-0 px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer ${
               filterCat === c.id
                 ? "bg-[#B77D82] text-white"
                 : "bg-[#FFFFFF] text-[#827B77] border border-[#EADBCE] hover:text-[#292321]"
@@ -158,7 +165,21 @@ export default function AdminSubcategoriesPage() {
                 return (
                   <tr key={sub.id} className="hover:bg-[#FAF7F2]/50 transition">
                     <td className="p-4 font-semibold text-[#292321]">
-                      {sub.name}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#F3EAE3] border border-[#EADBCE] shrink-0 flex items-center justify-center">
+                          {sub.imageUrl ? (
+                            <img src={sub.imageUrl} alt={sub.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <ImageIcon className="w-4 h-4 text-[#827B77]/60" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-[#292321]">{sub.name}</p>
+                          {sub.description && (
+                            <p className="text-[11px] text-[#827B77] line-clamp-1">{sub.description}</p>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="p-4">
                       <span className="px-2.5 py-0.5 rounded-full bg-[#F7EEEE] text-[#B77D82] font-medium text-[11px]">
@@ -174,30 +195,21 @@ export default function AdminSubcategoriesPage() {
                     <td className="p-4">
                       <button
                         onClick={() => togglePublish(sub)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition cursor-pointer ${
                           sub.published
                             ? "bg-emerald-50 text-emerald-700"
                             : "bg-[#FAF7F2] text-[#827B77] border border-[#EADBCE]"
                         }`}
                       >
-                        {sub.published ? (
-                          <>
-                            <Eye className="w-3 h-3" />
-                            Publicada
-                          </>
-                        ) : (
-                          <>
-                            <EyeOff className="w-3 h-3" />
-                            Oculta
-                          </>
-                        )}
+                        {sub.published ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        {sub.published ? "Publicada" : "Rascunho"}
                       </button>
                     </td>
                     <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => handleOpenEdit(sub)}
-                          className="p-1.5 rounded-lg text-[#827B77] hover:text-[#292321] hover:bg-[#FAF7F2]"
+                          className="p-1.5 rounded-lg border border-[#EADBCE] text-[#827B77] hover:text-[#292321] hover:bg-[#FAF7F2] transition cursor-pointer"
                           title="Editar"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -208,7 +220,7 @@ export default function AdminSubcategoriesPage() {
                               deleteSubcategory(sub.id);
                             }
                           }}
-                          className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50"
+                          className="p-1.5 rounded-lg border border-[#EADBCE] text-rose-600 hover:bg-rose-50 transition cursor-pointer"
                           title="Excluir"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -223,20 +235,20 @@ export default function AdminSubcategoriesPage() {
         </div>
       </div>
 
-      {/* Modal de Criação / Edição de Subcategoria */}
+      {/* Modal de Criação / Edição */}
       {(isCreating || editingSub) && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] p-6 max-w-md w-full space-y-4 shadow-xl animate-fade-in">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#FFFFFF] w-full max-w-lg rounded-3xl border border-[#EADBCE] shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-[#EADBCE]">
-              <h3 className="font-serif font-bold text-lg text-[#292321]">
-                {isCreating ? "Nova Subcategoria" : "Editar Subcategoria"}
-              </h3>
+              <h2 className="font-serif font-bold text-lg text-[#292321]">
+                {isCreating ? "Criar Nova Subcategoria" : `Editar Subcategoria`}
+              </h2>
               <button
                 onClick={() => {
                   setIsCreating(false);
                   setEditingSub(null);
                 }}
-                className="text-[#827B77] hover:text-[#292321]"
+                className="p-1 rounded-lg text-[#827B77] hover:bg-[#FAF7F2] cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -287,6 +299,27 @@ export default function AdminSubcategoriesPage() {
                 />
               </div>
 
+              {/* Upload de Imagem / Capa da Subcategoria */}
+              <ImageUploadField
+                label="Imagem / Capa da Subcategoria (Opcional)"
+                helperText="Envie a imagem representativa deste foco ou rotina (JPG, PNG ou WebP até 5 MB)"
+                value={formData.imageUrl}
+                onChange={(url) => setFormData({ ...formData, imageUrl: url })}
+                aspectRatio="wide"
+              />
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold uppercase text-[#827B77] block">
+                  Descrição
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={2}
+                  className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold uppercase text-[#827B77] block">
@@ -300,26 +333,37 @@ export default function AdminSubcategoriesPage() {
                   />
                 </div>
 
-                <div className="flex items-center gap-2 pt-5">
-                  <input
-                    type="checkbox"
-                    id="subPublished"
-                    checked={formData.published}
-                    onChange={(e) => setFormData({ ...formData, published: e.target.checked })}
-                    className="rounded border-[#EADBCE] text-[#B77D82]"
-                  />
-                  <label htmlFor="subPublished" className="text-xs font-semibold text-[#292321]">
-                    Publicado
+                <div className="space-y-1 flex flex-col justify-end">
+                  <label className="flex items-center gap-2 cursor-pointer pb-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.published}
+                      onChange={(e) => setFormData({ ...formData, published: e.target.checked })}
+                      className="rounded text-[#B77D82] focus:ring-[#B77D82]"
+                    />
+                    <span className="text-xs text-[#292321] font-medium">Publicada no site</span>
                   </label>
                 </div>
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C]"
-              >
-                Salvar Subcategoria
-              </button>
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#EADBCE]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreating(false);
+                    setEditingSub(null);
+                  }}
+                  className="px-4 py-2 rounded-xl border border-[#EADBCE] text-xs font-semibold text-[#827B77] hover:bg-[#FAF7F2] cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold shadow-xs cursor-pointer"
+                >
+                  Salvar
+                </button>
+              </div>
             </form>
           </div>
         </div>

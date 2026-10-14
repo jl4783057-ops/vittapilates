@@ -1,363 +1,200 @@
 "use client";
 
-import React, { useState, useMemo, Suspense } from "react";
+import React, { useState, useMemo, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useApp } from "@/lib/store/context";
 import {
-  Search,
-  Filter,
   Clock,
   Play,
-  CheckCircle2,
-  Sparkles,
-  SlidersHorizontal,
-  X,
   Layers,
+  Sparkles,
+  PlusCircle,
+  ChevronRight,
+  ArrowLeft,
+  ArrowRight,
+  Target,
+  ChevronLeft,
 } from "lucide-react";
 
 function ProgramsContent() {
   const searchParams = useSearchParams();
   const categoryParam = searchParams.get("categoria");
+  const subcategoryParam = searchParams.get("subcategoria");
 
-  const { categories, subcategories, lessons, currentUser } = useApp();
+  const { categories, subcategories, lessons } = useApp();
 
-  const [selectedCategory, setSelectedCategory] = useState<string>(
-    categoryParam || "todas"
-  );
-  const [selectedSubcategory, setSelectedSubcategory] = useState<string>("todas");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDuration, setSelectedDuration] = useState<string>("todos");
-  const [selectedLevel, setSelectedLevel] = useState<string>("todos");
-  const [selectedFormat, setSelectedFormat] = useState<string>("todos");
-  const [selectedEquipment, setSelectedEquipment] = useState<string>("todos");
-  const [showFiltersModal, setShowFiltersModal] = useState(false);
-
-  // Subcategorias disponíveis para a categoria selecionada
-  const availableSubcategories = useMemo(() => {
-    if (selectedCategory === "todas") return [];
-    const cat = categories.find((c) => c.slug === selectedCategory || c.id === selectedCategory);
-    if (!cat) return [];
-    return subcategories.filter((s) => s.categoryId === cat.id && s.published);
-  }, [categories, subcategories, selectedCategory]);
-
-  // Filtragem estrita e dinâmica
-  const filteredLessons = useMemo(() => {
-    return lessons.filter((lesson) => {
-      // Regra de segurança: apenas publicadas
-      if (lesson.status !== "publicado") return false;
-
-      // Categoria
-      if (selectedCategory !== "todas") {
-        const cat = categories.find((c) => c.slug === selectedCategory || c.id === selectedCategory);
-        if (cat && lesson.categoryId !== cat.id) return false;
-      }
-
-      // Subcategoria
-      if (selectedSubcategory !== "todas" && lesson.subcategoryId !== selectedSubcategory) {
-        return false;
-      }
-
-      // Duração (5, 10, 15, 20, 30 min ou mais)
-      if (selectedDuration !== "todos") {
-        const dur = lesson.durationMinutes;
-        if (selectedDuration === "5" && dur > 5) return false;
-        if (selectedDuration === "10" && (dur <= 5 || dur > 10)) return false;
-        if (selectedDuration === "15" && (dur <= 10 || dur > 15)) return false;
-        if (selectedDuration === "20" && (dur <= 15 || dur > 20)) return false;
-        if (selectedDuration === "30+" && dur < 30) return false;
-      }
-
-      // Nível
-      if (selectedLevel !== "todos" && lesson.level !== selectedLevel) {
-        return false;
-      }
-
-      // Formato
-      if (selectedFormat !== "todos" && lesson.format !== selectedFormat) {
-        return false;
-      }
-
-      // Equipamento
-      if (selectedEquipment !== "todos" && lesson.equipment !== selectedEquipment) {
-        return false;
-      }
-
-      // Busca textual
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchesTitle = lesson.title.toLowerCase().includes(query);
-        const matchesDesc = lesson.description.toLowerCase().includes(query);
-        const matchesTags = lesson.tags?.some((t) => t.toLowerCase().includes(query));
-        if (!matchesTitle && !matchesDesc && !matchesTags) return false;
-      }
-
-      return true;
-    });
-  }, [
-    lessons,
-    categories,
-    selectedCategory,
-    selectedSubcategory,
-    selectedDuration,
-    selectedLevel,
-    selectedFormat,
-    selectedEquipment,
-    searchQuery,
-  ]);
-
-  const activeFiltersCount = [
-    selectedDuration !== "todos",
-    selectedLevel !== "todos",
-    selectedFormat !== "todos",
-    selectedEquipment !== "todos",
-  ].filter(Boolean).length;
-
-  const currentCategoryData = categories.find(
-    (c) => c.slug === selectedCategory || c.id === selectedCategory
+  // Etapa 1: Categoria principal selecionada (objetivo). Se null, exibe lista de cards de objetivos.
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(
+    categoryParam || null
   );
 
-  return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Título & Busca */}
-      <section className="space-y-3 pt-2">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
-            Biblioteca de Pilates
+  // Etapa 2: Subcategoria selecionada (treino/região). Se null, exibe lista de cards de treinos/regiões do objetivo.
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(
+    subcategoryParam || null
+  );
+
+  // Sincroniza parâmetros de URL
+  useEffect(() => {
+    if (categoryParam) {
+      setSelectedCategory(categoryParam);
+      if (subcategoryParam) {
+        setSelectedSubcategory(subcategoryParam);
+      } else {
+        setSelectedSubcategory(null);
+      }
+    } else {
+      setSelectedCategory(null);
+      setSelectedSubcategory(null);
+    }
+  }, [categoryParam, subcategoryParam]);
+
+  const publishedCategories = useMemo(
+    () => categories.filter((c) => c.published).sort((a, b) => a.order - b.order),
+    [categories]
+  );
+
+  const currentCategoryData = useMemo(() => {
+    if (!selectedCategory) return null;
+    return categories.find(
+      (c) => c.slug === selectedCategory || c.id === selectedCategory
+    );
+  }, [categories, selectedCategory]);
+
+  // Subcategorias vinculadas EXCLUSIVAMENTE ao objetivo selecionado
+  const linkedSubcategories = useMemo(() => {
+    if (!currentCategoryData) return [];
+    return subcategories
+      .filter((s) => s.categoryId === currentCategoryData.id && s.published)
+      .sort((a, b) => a.order - b.order);
+  }, [subcategories, currentCategoryData]);
+
+  // Dados da subcategoria selecionada
+  const currentSubcategoryData = useMemo(() => {
+    if (!selectedSubcategory) return null;
+    return linkedSubcategories.find(
+      (s) => s.id === selectedSubcategory || s.slug === selectedSubcategory
+    );
+  }, [linkedSubcategories, selectedSubcategory]);
+
+  // Aulas vinculadas estritamente à subcategoria aberta
+  const subcategoryLessons = useMemo(() => {
+    if (!currentCategoryData || !currentSubcategoryData) return [];
+    return lessons.filter(
+      (l) =>
+        l.status === "publicado" &&
+        l.categoryId === currentCategoryData.id &&
+        l.subcategoryId === currentSubcategoryData.id
+    );
+  }, [lessons, currentCategoryData, currentSubcategoryData]);
+
+  // Handlers de navegação entre as 3 etapas
+  const handleOpenCategory = (catSlug: string) => {
+    setSelectedCategory(catSlug);
+    setSelectedSubcategory(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleOpenSubcategory = (subIdOrSlug: string) => {
+    setSelectedSubcategory(subIdOrSlug);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleBackToCategories = () => {
+    setSelectedCategory(null);
+    setSelectedSubcategory(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleBackToSubcategories = () => {
+    setSelectedSubcategory(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  /* =========================================================================
+     ETAPA 3: VER AULAS DAQUELA SUBCATEGORIA ESPECÍFICA
+     ========================================================================= */
+  if (currentCategoryData && currentSubcategoryData) {
+    return (
+      <div className="space-y-6 animate-fade-in py-1">
+        {/* Navegação de Retorno */}
+        <div className="flex items-center justify-between pt-1">
+          <button
+            onClick={handleBackToSubcategories}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#827B77] hover:text-[#292321] transition cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4 text-[#B77D82]" />
+            <span>Voltar aos treinos de {currentCategoryData.name}</span>
+          </button>
+
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82] bg-white border border-[#EADBCE] px-3 py-1 rounded-full shadow-2xs">
+            {subcategoryLessons.length} {subcategoryLessons.length === 1 ? "aula" : "aulas"}
+          </span>
+        </div>
+
+        {/* Cabeçalho da Subcategoria Aberta */}
+        <header className="space-y-2">
+          <div className="flex items-center gap-2 text-xs text-[#827B77]">
+            <button
+              onClick={handleBackToCategories}
+              className="hover:underline hover:text-[#B77D82]"
+            >
+              Objetivos
+            </button>
+            <span>/</span>
+            <button
+              onClick={handleBackToSubcategories}
+              className="hover:underline hover:text-[#B77D82]"
+            >
+              {currentCategoryData.name}
+            </button>
+            <span>/</span>
+            <span className="font-semibold text-[#292321]">{currentSubcategoryData.name}</span>
+          </div>
+
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321] tracking-tight">
+            {currentSubcategoryData.name}
           </h1>
-          <p className="text-xs sm:text-sm text-[#827B77] mt-1">
-            Escolha seu objetivo ou filtre pelas suas preferências de tempo e intensidade.
-          </p>
-        </div>
 
-        {/* Input de Busca */}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#827B77]" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por postura, pernas, respiração, 5 min..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-[#EADBCE] bg-[#FFFFFF] text-xs text-[#292321] placeholder:text-[#827B77]/60 focus:outline-none focus:ring-2 focus:ring-[#B77D82]/40 transition shadow-2xs"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#827B77] hover:text-[#292321]"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          <button
-            onClick={() => setShowFiltersModal(true)}
-            className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border text-xs font-semibold transition ${
-              activeFiltersCount > 0
-                ? "bg-[#B77D82] text-white border-[#B77D82]"
-                : "bg-[#FFFFFF] text-[#292321] border-[#EADBCE] hover:bg-[#FAF7F2]"
-            }`}
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-            <span className="hidden sm:inline">Filtros</span>
-            {activeFiltersCount > 0 && (
-              <span className="w-4 h-4 rounded-full bg-white text-[#B77D82] text-[10px] flex items-center justify-center font-bold">
-                {activeFiltersCount}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Tags de Acesso Rápido Populares */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px]">
-          <span className="text-[#827B77] font-medium shrink-0">Destaques:</span>
-          {[
-            { label: "Home Office", query: "home office" },
-            { label: "Muito Tempo Sentado", query: "muito tempo sentado" },
-            { label: "Rotina da Manhã", query: "rotina da manhã" },
-            { label: "5 Minutos Express", query: "5 minutos" },
-            { label: "Postura & Coluna", query: "postura" },
-          ].map((tag) => (
-            <button
-              key={tag.label}
-              onClick={() => setSearchQuery(tag.query)}
-              className="shrink-0 px-2.5 py-1 rounded-full bg-[#FFFFFF] border border-[#EADBCE] text-[#827B77] hover:text-[#B77D82] hover:border-[#B77D82] transition"
-            >
-              {tag.label}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* Carrossel de Categorias Principais */}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#827B77]">
-            Categorias Principais
-          </h2>
-          {selectedCategory !== "todas" && (
-            <button
-              onClick={() => {
-                setSelectedCategory("todas");
-                setSelectedSubcategory("todas");
-              }}
-              className="text-xs text-[#B77D82] font-semibold hover:underline"
-            >
-              Ver Todas
-            </button>
+          {currentSubcategoryData.description ? (
+            <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-lg">
+              {currentSubcategoryData.description}
+            </p>
+          ) : (
+            <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-lg">
+              Práticas guiadas focadas especialmente nesta região e objetivo.
+            </p>
           )}
-        </div>
+        </header>
 
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
-          <button
-            onClick={() => {
-              setSelectedCategory("todas");
-              setSelectedSubcategory("todas");
-            }}
-            className={`shrink-0 px-3.5 py-2 rounded-2xl text-xs font-semibold transition ${
-              selectedCategory === "todas"
-                ? "bg-[#B77D82] text-white shadow-xs"
-                : "bg-[#FFFFFF] text-[#827B77] border border-[#EADBCE] hover:text-[#292321]"
-            }`}
-          >
-            Todas as Aulas
-          </button>
-
-          {categories
-            .filter((c) => c.published)
-            .map((cat) => {
-              const isSelected = selectedCategory === cat.slug || selectedCategory === cat.id;
-              return (
+        {/* Lista de Aulas da Subcategoria */}
+        <section aria-label={`Aulas de ${currentSubcategoryData.name}`} className="space-y-3.5 pt-1">
+          {subcategoryLessons.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-[#EADBCE] p-8 text-center space-y-3 shadow-2xs">
+              <div className="w-12 h-12 rounded-full bg-[#F3EAE3] text-[#B77D82] mx-auto flex items-center justify-center">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <h3 className="font-serif font-bold text-base text-[#292321]">
+                Nenhuma aula cadastrada neste treino
+              </h3>
+              <p className="text-xs text-[#827B77] max-w-sm mx-auto leading-relaxed">
+                Novas aulas e práticas guiadas para o foco "{currentSubcategoryData.name}" serão publicadas em breve.
+              </p>
+              <div className="pt-1">
                 <button
-                  key={cat.id}
-                  onClick={() => {
-                    setSelectedCategory(cat.slug);
-                    setSelectedSubcategory("todas");
-                  }}
-                  className={`shrink-0 px-3.5 py-2 rounded-2xl text-xs font-semibold transition flex items-center gap-1.5 ${
-                    isSelected
-                      ? "bg-[#B77D82] text-white shadow-xs"
-                      : "bg-[#FFFFFF] text-[#827B77] border border-[#EADBCE] hover:text-[#292321]"
-                  }`}
+                  onClick={handleBackToSubcategories}
+                  className="px-5 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold shadow-xs hover:bg-[#A3676C] transition cursor-pointer"
                 >
-                  <span>{cat.name}</span>
+                  Escolher outro treino de {currentCategoryData.name}
                 </button>
-              );
-            })}
-        </div>
-      </section>
-
-      {/* Banner da Categoria Selecionada */}
-      {currentCategoryData && currentCategoryData.bannerUrl && (
-        <div className="relative rounded-3xl overflow-hidden border border-[#EADBCE] shadow-xs">
-          <img
-            src={currentCategoryData.bannerUrl}
-            alt={currentCategoryData.name}
-            className="w-full h-36 object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent flex flex-col justify-end p-4 text-white">
-            <h2 className="font-serif font-bold text-lg">{currentCategoryData.name}</h2>
-            <p className="text-xs text-white/80 line-clamp-2 max-w-md">
-              {currentCategoryData.description}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Pílulas de Subcategorias da Categoria Selecionada */}
-      {availableSubcategories.length > 0 && (
-        <div className="space-y-1.5">
-          <span className="text-[11px] font-semibold text-[#827B77] uppercase tracking-wider block">
-            Subcategorias de {currentCategoryData?.name}:
-          </span>
-          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-            <button
-              onClick={() => setSelectedSubcategory("todas")}
-              className={`shrink-0 px-3 py-1 rounded-xl text-xs font-medium transition ${
-                selectedSubcategory === "todas"
-                  ? "bg-[#292321] text-white"
-                  : "bg-[#FFFFFF] text-[#827B77] border border-[#EADBCE]"
-              }`}
-            >
-              Todas
-            </button>
-            {availableSubcategories.map((sub) => (
-              <button
-                key={sub.id}
-                onClick={() => setSelectedSubcategory(sub.id)}
-                className={`shrink-0 px-3 py-1 rounded-xl text-xs font-medium transition ${
-                  selectedSubcategory === sub.id
-                    ? "bg-[#292321] text-white"
-                    : "bg-[#FFFFFF] text-[#827B77] border border-[#EADBCE] hover:text-[#292321]"
-                }`}
-              >
-                {sub.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Grid de Aulas da Biblioteca */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between text-xs text-[#827B77]">
-          <span>
-            Exibindo <strong>{filteredLessons.length}</strong> {filteredLessons.length === 1 ? "aula" : "aulas"}
-          </span>
-          {(activeFiltersCount > 0 || searchQuery) && (
-            <button
-              onClick={() => {
-                setSelectedDuration("todos");
-                setSelectedLevel("todos");
-                setSelectedFormat("todos");
-                setSelectedEquipment("todos");
-                setSearchQuery("");
-                setSelectedSubcategory("todas");
-              }}
-              className="text-[#B77D82] font-semibold hover:underline"
-            >
-              Limpar filtros
-            </button>
-          )}
-        </div>
-
-        {filteredLessons.length === 0 ? (
-          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] p-8 text-center space-y-3">
-            <div className="w-12 h-12 rounded-full bg-[#F3EAE3] text-[#B77D82] mx-auto flex items-center justify-center">
-              <Search className="w-6 h-6" />
+              </div>
             </div>
-            <h3 className="font-serif font-bold text-base text-[#292321]">
-              Nenhuma aula encontrada com esses filtros
-            </h3>
-            <p className="text-xs text-[#827B77] max-w-sm mx-auto">
-              Experimente remover alguns filtros ou buscar por outro termo como "iniciante", "postura" ou "express".
-            </p>
-            <button
-              onClick={() => {
-                setSelectedCategory("todas");
-                setSelectedSubcategory("todas");
-                setSelectedDuration("todos");
-                setSelectedLevel("todos");
-                setSelectedFormat("todos");
-                setSelectedEquipment("todos");
-                setSearchQuery("");
-              }}
-              className="px-4 py-2 rounded-full bg-[#B77D82] text-white text-xs font-semibold shadow-xs"
-            >
-              Ver Todas as Aulas
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3.5">
-            {filteredLessons.map((lesson) => {
-              const isCompleted = currentUser?.completedLessonIds?.includes(lesson.id);
-              const cat = categories.find((c) => c.id === lesson.categoryId);
-
-              return (
-                <div
+          ) : (
+            <div className="grid grid-cols-1 gap-3.5">
+              {subcategoryLessons.map((lesson) => (
+                <article
                   key={lesson.id}
-                  className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] overflow-hidden hover:border-[#B77D82]/50 hover:shadow-xs transition group flex flex-col sm:flex-row"
+                  className="bg-white rounded-3xl border border-[#EADBCE] overflow-hidden hover:border-[#B77D82]/50 hover:shadow-xs transition group flex flex-col sm:flex-row"
                 >
                   <div className="relative sm:w-44 h-40 sm:h-auto shrink-0 bg-[#F3EAE3]">
                     <img
@@ -365,29 +202,26 @@ function ProgramsContent() {
                       alt={lesson.title}
                       className="w-full h-full object-cover group-hover:scale-102 transition duration-300"
                     />
-                    <div className="absolute inset-0 bg-black/15" />
-                    {isCompleted && (
-                      <div className="absolute top-2.5 left-2.5 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Concluída
-                      </div>
-                    )}
+                    <div className="absolute inset-0 bg-black/20" />
                     <Link
                       href={`/aluna/aula/${lesson.id}`}
-                      className="absolute inset-0 flex items-center justify-center"
-                      aria-label="Abrir aula"
+                      className="absolute inset-0 flex items-center justify-center text-white"
+                      aria-label={`Assistir aula ${lesson.title}`}
                     >
-                      <div className="w-10 h-10 rounded-full bg-[#B77D82] text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                      <div className="w-11 h-11 rounded-full bg-[#B77D82] text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
                         <Play className="w-4 h-4 fill-white ml-0.5" />
                       </div>
                     </Link>
+                    <span className="absolute bottom-2.5 left-2.5 rounded-full bg-black/45 px-2.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-xs">
+                      {lesson.durationMinutes} min
+                    </span>
                   </div>
 
-                  <div className="p-4 flex-1 flex flex-col justify-between space-y-2">
+                  <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-2.5">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-[#B77D82]">
-                          {cat?.name || "Pilates"}
+                          {currentSubcategoryData.name}
                         </span>
                         <span className="text-[#827B77]">•</span>
                         <span className="text-[10px] font-medium text-[#827B77] capitalize">
@@ -397,9 +231,11 @@ function ProgramsContent() {
                       <h3 className="font-serif font-bold text-base text-[#292321] line-clamp-1 group-hover:text-[#B77D82] transition-colors">
                         {lesson.title}
                       </h3>
-                      <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
-                        {lesson.description}
-                      </p>
+                      {lesson.description && (
+                        <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
+                          {lesson.description}
+                        </p>
+                      )}
                     </div>
 
                     <div className="pt-2 flex items-center justify-between border-t border-[#FAF7F2]">
@@ -411,180 +247,261 @@ function ProgramsContent() {
                         <span className="capitalize text-[11px] bg-[#FAF7F2] px-2 py-0.5 rounded-full border border-[#EADBCE]">
                           {lesson.level}
                         </span>
-                        <span className="capitalize text-[11px] hidden xs:inline text-[#827B77]">
-                          {lesson.equipment}
-                        </span>
                       </div>
 
                       <Link
                         href={`/aluna/aula/${lesson.id}`}
-                        className="text-xs font-semibold text-[#B77D82] hover:underline"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#B77D82] hover:underline"
                       >
-                        Assistir Aula →
+                        <span>Praticar Aula</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
                       </Link>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* Modal / Gaveta de Filtros Avançados */}
-      {showFiltersModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
-          <div className="bg-[#FFFFFF] w-full max-w-md rounded-t-3xl sm:rounded-3xl border border-[#EADBCE] p-6 space-y-5 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-[#EADBCE]">
-              <h3 className="font-serif font-bold text-lg text-[#292321]">
-                Filtros da Biblioteca
-              </h3>
-              <button
-                onClick={() => setShowFiltersModal(false)}
-                className="p-1 rounded-lg text-[#827B77] hover:bg-[#FAF7F2]"
-              >
-                <X className="w-5 h-5" />
-              </button>
+                </article>
+              ))}
             </div>
+          )}
+        </section>
+      </div>
+    );
+  }
 
-            {/* Duração */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-[#827B77] block">
-                Duração da Aula
-              </label>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                {[
-                  { label: "Todas", val: "todos" },
-                  { label: "Até 5 min", val: "5" },
-                  { label: "10 min", val: "10" },
-                  { label: "15 min", val: "15" },
-                  { label: "20 min", val: "20" },
-                  { label: "30+ min", val: "30+" },
-                ].map((item) => (
-                  <button
-                    key={item.val}
-                    onClick={() => setSelectedDuration(item.val)}
-                    className={`py-2 rounded-xl font-medium transition ${
-                      selectedDuration === item.val
-                        ? "bg-[#B77D82] text-white"
-                        : "bg-[#FAF7F2] text-[#292321] border border-[#EADBCE]"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+  /* =========================================================================
+     ETAPA 2: VER TREINOS E REGIÕES DO CORPO DO OBJETIVO SELECIONADO
+     ========================================================================= */
+  if (currentCategoryData) {
+    return (
+      <div className="space-y-6 animate-fade-in py-1">
+        {/* Navegação de Retorno para Todos os Objetivos */}
+        <div className="pt-1">
+          <button
+            onClick={handleBackToCategories}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#827B77] hover:text-[#292321] transition cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4 text-[#B77D82]" />
+            <span>Voltar para todos os objetivos</span>
+          </button>
+        </div>
 
-            {/* Nível */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-[#827B77] block">
-                Nível de Prática
-              </label>
-              <div className="grid grid-cols-4 gap-2 text-xs">
-                {[
-                  { label: "Todos", val: "todos" },
-                  { label: "Iniciante", val: "iniciante" },
-                  { label: "Interm.", val: "intermediário" },
-                  { label: "Avançado", val: "avançado" },
-                ].map((item) => (
-                  <button
-                    key={item.val}
-                    onClick={() => setSelectedLevel(item.val)}
-                    className={`py-2 rounded-xl font-medium transition ${
-                      selectedLevel === item.val
-                        ? "bg-[#B77D82] text-white"
-                        : "bg-[#FAF7F2] text-[#292321] border border-[#EADBCE]"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Formato */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-[#827B77] block">
-                Formato da Aula
-              </label>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                {[
-                  { label: "Todos os formatos", val: "todos" },
-                  { label: "Aula Rápida", val: "aula rápida" },
-                  { label: "Aula Completa", val: "aula completa" },
-                  { label: "Programa por Dias", val: "programa por dias" },
-                ].map((item) => (
-                  <button
-                    key={item.val}
-                    onClick={() => setSelectedFormat(item.val)}
-                    className={`py-2 px-3 rounded-xl font-medium transition text-left ${
-                      selectedFormat === item.val
-                        ? "bg-[#B77D82] text-white"
-                        : "bg-[#FAF7F2] text-[#292321] border border-[#EADBCE]"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Equipamento */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-[#827B77] block">
-                Equipamento Necessário
-              </label>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                {[
-                  { label: "Todos", val: "todos" },
-                  { label: "Sem Equipamento", val: "sem equipamento" },
-                  { label: "Com Acessórios", val: "com acessórios" },
-                ].map((item) => (
-                  <button
-                    key={item.val}
-                    onClick={() => setSelectedEquipment(item.val)}
-                    className={`py-2 rounded-xl font-medium transition ${
-                      selectedEquipment === item.val
-                        ? "bg-[#B77D82] text-white"
-                        : "bg-[#FAF7F2] text-[#292321] border border-[#EADBCE]"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="pt-2 flex gap-3">
-              <button
-                onClick={() => {
-                  setSelectedDuration("todos");
-                  setSelectedLevel("todos");
-                  setSelectedFormat("todos");
-                  setSelectedEquipment("todos");
-                }}
-                className="flex-1 py-3 rounded-full border border-[#EADBCE] text-xs font-semibold text-[#827B77] hover:bg-[#FAF7F2]"
-              >
-                Limpar Todos
-              </button>
-              <button
-                onClick={() => setShowFiltersModal(false)}
-                className="flex-1 py-3 rounded-full bg-[#B77D82] text-white text-xs font-semibold shadow-xs"
-              >
-                Aplicar Filtros
-              </button>
-            </div>
+        {/* Card de Capa do Objetivo Escolhido */}
+        <div className="relative rounded-3xl overflow-hidden border border-[#EADBCE] shadow-xs bg-[#F3EAE3]">
+          {currentCategoryData.bannerUrl && (
+            <img
+              src={currentCategoryData.bannerUrl}
+              alt={currentCategoryData.name}
+              className="w-full h-40 sm:h-48 object-cover"
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex flex-col justify-end p-5 text-white">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#EBD6D5]">
+              Objetivo Selecionado
+            </span>
+            <h1 className="font-serif font-bold text-2xl sm:text-3xl mt-0.5 tracking-tight">
+              {currentCategoryData.name}
+            </h1>
+            {currentCategoryData.description && (
+              <p className="text-xs text-white/90 line-clamp-2 max-w-lg mt-1 leading-relaxed">
+                {currentCategoryData.description}
+              </p>
+            )}
           </div>
         </div>
-      )}
+
+        {/* Lista de Subcategorias (Treinos e Regiões do Corpo) */}
+        <section aria-labelledby="subcategories-title" className="space-y-3.5 pt-1">
+          <div>
+            <h2 id="subcategories-title" className="text-xs font-bold uppercase tracking-wider text-[#827B77] flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-[#B77D82]" />
+              Escolha o Treino ou Região do Corpo
+            </h2>
+            <p className="text-xs text-[#827B77] mt-0.5">
+              Toque em uma opção para ver as aulas correspondentes:
+            </p>
+          </div>
+
+          {linkedSubcategories.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-dashed border-[#EADBCE] p-6 text-center space-y-2.5 shadow-2xs">
+              <div className="w-10 h-10 rounded-full bg-[#FAF7F2] text-[#827B77] mx-auto flex items-center justify-center">
+                <Layers className="w-5 h-5 text-[#B77D82]" />
+              </div>
+              <h3 className="font-serif font-bold text-sm text-[#292321]">
+                Nenhum treino específico cadastrado neste objetivo
+              </h3>
+              <p className="text-xs text-[#827B77] max-w-sm mx-auto leading-relaxed">
+                Este objetivo ainda não possui divisões cadastradas.
+              </p>
+              <div className="pt-1">
+                <Link
+                  href="/admin/subcategorias"
+                  className="inline-flex items-center gap-1.5 text-xs text-[#B77D82] font-semibold hover:underline"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  Gerenciar no Painel Admin →
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {linkedSubcategories.map((sub) => {
+                const subLessonsCount = lessons.filter(
+                  (l) =>
+                    l.categoryId === currentCategoryData.id &&
+                    l.subcategoryId === sub.id &&
+                    l.status === "publicado"
+                ).length;
+
+                return (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => handleOpenSubcategory(sub.slug || sub.id)}
+                    className="p-4 rounded-3xl border border-[#EADBCE] bg-white text-left transition hover:border-[#B77D82]/60 hover:shadow-2xs active:scale-[0.99] cursor-pointer flex items-center justify-between gap-3 group"
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      {sub.imageUrl ? (
+                        <div className="w-14 h-14 rounded-2xl overflow-hidden border border-[#EADBCE] shrink-0 bg-[#FAF7F2]">
+                          <img
+                            src={sub.imageUrl}
+                            alt={sub.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-14 h-14 rounded-2xl bg-[#F3EAE3] text-[#B77D82] flex items-center justify-center shrink-0 group-hover:bg-[#B77D82] group-hover:text-white transition">
+                          <Sparkles className="w-6 h-6" />
+                        </div>
+                      )}
+
+                      <div className="min-w-0 space-y-0.5">
+                        <h3 className="font-serif font-bold text-sm sm:text-base text-[#292321] group-hover:text-[#B77D82] transition-colors line-clamp-1">
+                          {sub.name}
+                        </h3>
+                        {sub.description && (
+                          <p className="text-[11px] text-[#827B77] line-clamp-1">
+                            {sub.description}
+                          </p>
+                        )}
+                        <span className="inline-block text-[10px] font-semibold text-[#827B77] bg-[#FAF7F2] px-2 py-0.5 rounded-full border border-[#EADBCE]">
+                          {subLessonsCount} {subLessonsCount === 1 ? "aula disponível" : "aulas disponíveis"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="w-9 h-9 rounded-full bg-[#FAF7F2] text-[#827B77] flex items-center justify-center shrink-0 group-hover:bg-[#B77D82] group-hover:text-white transition-colors">
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
+
+  /* =========================================================================
+     ETAPA 1: SELECIONAR OBJETIVO (CATEGORIAS PRINCIPAIS EM CARDS VISUAIS)
+     ========================================================================= */
+  return (
+    <div className="space-y-6 sm:space-y-7 animate-fade-in py-1">
+      {/* Título & Subtítulo da Área Explorar */}
+      <section className="space-y-1.5 pt-1">
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321] tracking-tight">
+          Explorar por Objetivo
+        </h1>
+        <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-lg">
+          Selecione qual o objetivo que você deseja focar na sua prática. Em seguida, você poderá escolher o treino e a região do corpo.
+        </p>
+      </section>
+
+      {/* Grid de Cards Visuais dos Objetivos Reais Cadastrados */}
+      <section aria-labelledby="objectives-grid-title" className="space-y-3">
+        <h2 id="objectives-grid-title" className="text-xs font-bold uppercase tracking-wider text-[#827B77] flex items-center gap-1.5">
+          <Target className="w-3.5 h-3.5 text-[#B77D82]" />
+          Objetivos Disponíveis ({publishedCategories.length})
+        </h2>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {publishedCategories.map((category) => {
+            const categoryLessons = lessons.filter(
+              (l) => l.categoryId === category.id && l.status === "publicado"
+            );
+            const categorySubcategories = subcategories.filter(
+              (s) => s.categoryId === category.id && s.published
+            );
+
+            return (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => handleOpenCategory(category.slug)}
+                className="group relative bg-white rounded-3xl border border-[#EADBCE] overflow-hidden text-left shadow-2xs hover:border-[#B77D82]/60 hover:shadow-md transition active:scale-[0.99] cursor-pointer flex flex-col justify-between"
+              >
+                {/* Capa com Imagem de Pilates Acolhedora */}
+                <div className="relative aspect-[16/9] w-full bg-[#F3EAE3] overflow-hidden">
+                  {category.bannerUrl ? (
+                    <img
+                      src={category.bannerUrl}
+                      alt={category.name}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[#B77D82]">
+                      <Target className="w-10 h-10" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+
+                  <span className="absolute bottom-3 left-3 rounded-full bg-white/90 backdrop-blur-md px-3 py-1 text-[11px] font-semibold text-[#292321] shadow-xs">
+                    {categorySubcategories.length}{" "}
+                    {categorySubcategories.length === 1 ? "foco / treino" : "focos / treinos"}
+                  </span>
+
+                  <span className="absolute bottom-3 right-3 rounded-full bg-black/40 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-md">
+                    {categoryLessons.length} {categoryLessons.length === 1 ? "aula" : "aulas"}
+                  </span>
+                </div>
+
+                {/* Conteúdo do Card do Objetivo */}
+                <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
+                  <div className="space-y-1">
+                    <h3 className="font-serif font-bold text-lg sm:text-xl text-[#292321] group-hover:text-[#B77D82] transition-colors leading-snug">
+                      {category.name}
+                    </h3>
+                    {category.description && (
+                      <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
+                        {category.description}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-between border-t border-[#FAF7F2] text-xs font-semibold text-[#B77D82]">
+                    <span>Ver treinos e regiões</span>
+                    <div className="w-8 h-8 rounded-full bg-[#FAF7F2] group-hover:bg-[#B77D82] group-hover:text-white flex items-center justify-center transition-colors">
+                      <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }
 
 export default function StudentProgramsLibraryPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-[#827B77]">Carregando biblioteca...</div>}>
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-xs text-[#827B77]">
+          Carregando objetivos e treinos...
+        </div>
+      }
+    >
       <ProgramsContent />
     </Suspense>
   );

@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   CheckCircle2,
 } from "lucide-react";
+import ImageUploadField from "@/components/ui/ImageUploadField";
 
 export default function AdminLessonsPage() {
   const { lessons, categories, subcategories, addLesson, updateLesson, deleteLesson } = useApp();
@@ -514,18 +515,13 @@ export default function AdminLessonsPage() {
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-[#827B77] block">
-                  URL da Imagem de Capa (Thumbnail)
-                </label>
-                <input
-                  type="url"
-                  value={formData.thumbnailUrl}
-                  onChange={(e) => setFormData({ ...formData, thumbnailUrl: e.target.value })}
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
-                  required
-                />
-              </div>
+              <ImageUploadField
+                label="Imagem de Capa (Thumbnail)"
+                value={formData.thumbnailUrl}
+                onChange={(url) => setFormData({ ...formData, thumbnailUrl: url })}
+                aspectRatio="video"
+                helperText="Capa exibida no catálogo e reprodutor de aulas (JPG, PNG ou WebP até 5MB)."
+              />
 
               <div className="space-y-1">
                 <label className="text-[11px] font-bold uppercase text-[#827B77] block">

@@ -8,9 +8,9 @@ import {
 } from '@/types';
 
 export const INITIAL_SETTINGS: SiteSettings = {
-  platformName: "Pilates em Casa",
-  logoText: "Pilates em Casa",
-  logoUrl: "",
+  platformName: "Vitta Pilates",
+  logoText: "Vitta Pilates",
+  logoUrl: "/uploads/img-1791917900012-vitta.png",
   loginTitle: "Bem-vinda de volta!",
   loginSubtitle: "Faça login para acessar seus treinos.",
   loginBannerUrl: "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1200&q=80",

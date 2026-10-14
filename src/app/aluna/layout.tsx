@@ -3,7 +3,6 @@
 import React, { Suspense } from "react";
 import { StudentHeader } from "@/components/ui/StudentHeader";
 import { StudentBottomNav } from "@/components/ui/StudentBottomNav";
-import { QuickRoleSwitcher } from "@/components/ui/QuickRoleSwitcher";
 
 export default function StudentLayout({
   children,
@@ -12,10 +11,6 @@ export default function StudentLayout({
 }) {
   return (
     <div className="min-h-screen bg-[#FAF7F2] flex flex-col antialiased">
-      <Suspense fallback={<div className="h-7 bg-[#292321]" />}>
-        <QuickRoleSwitcher />
-      </Suspense>
-
       <Suspense fallback={<div className="h-14 bg-[#FAF7F2]" />}>
         <StudentHeader />
       </Suspense>

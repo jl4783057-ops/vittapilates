@@ -4,20 +4,19 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/lib/store/context";
-import { QuickRoleSwitcher } from "@/components/ui/QuickRoleSwitcher";
-import { Eye, EyeOff, Sparkles, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, Sparkles, ArrowRight } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
   const { siteSettings, login } = useApp();
 
-  const [email, setEmail] = useState("aluna@pilatesemcasa.com.br");
-  const [password, setPassword] = useState("aluna123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -27,21 +26,13 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    setTimeout(() => {
-      login(email);
-      setLoading(false);
-      if (email.includes("admin")) {
-        router.push("/admin");
-      } else {
-        router.push("/aluna");
-      }
-    }, 400);
+    login(email, "aluna");
+    router.push("/aluna");
+    setLoading(false);
   };
 
   return (
     <div className="min-h-screen bg-[#FAF7F2] flex flex-col justify-between">
-      <QuickRoleSwitcher />
-
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
         <div className="w-full max-w-md bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.06)] overflow-hidden">
           {/* Top Banner se configurado */}
@@ -59,12 +50,24 @@ export default function LoginPage() {
           <div className="p-6 sm:p-8 space-y-6">
             {/* Header com Logo configurável */}
             <div className="text-center space-y-2">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#B77D82] text-white font-serif font-bold text-2xl shadow-sm mb-1">
-                P
-              </div>
-              <p className="text-xs uppercase tracking-widest text-[#B77D82] font-semibold">
-                {siteSettings.logoText || "Pilates em Casa"}
-              </p>
+              {siteSettings.logoUrl ? (
+                <div className="flex justify-center mb-1">
+                  <img
+                    src={siteSettings.logoUrl}
+                    alt={siteSettings.logoText || "Pilates em Casa"}
+                    className="h-14 w-auto max-w-[180px] object-contain rounded-xl"
+                  />
+                </div>
+              ) : (
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#B77D82] text-white font-serif font-bold text-2xl shadow-sm mb-1">
+                  P
+                </div>
+              )}
+              {siteSettings.logoText && (
+                <p className="text-xs uppercase tracking-widest text-[#B77D82] font-semibold">
+                  {siteSettings.logoText}
+                </p>
+              )}
               <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
                 {siteSettings.loginTitle || "Bem-vinda de volta!"}
               </h1>
@@ -79,7 +82,7 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Formulário de Login */}
+            {/* Formulário de Login da Aluna */}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-[#292321] uppercase tracking-wider">
@@ -112,14 +115,14 @@ export default function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Sua senha secreta"
+                    placeholder="Sua senha"
                     className="w-full px-4 py-3 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-sm text-[#292321] placeholder:text-[#827B77]/60 focus:outline-none focus:ring-2 focus:ring-[#B77D82]/50 transition pr-11"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#827B77] hover:text-[#292321] p-1"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#827B77] hover:text-[#292321] p-1 cursor-pointer"
                     aria-label={showPassword ? "Ocultar senha" : "Exibir senha"}
                   >
                     {showPassword ? (
@@ -141,55 +144,6 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Separador "ou" */}
-            <div className="relative flex items-center justify-center">
-              <div className="border-t border-[#EADBCE] w-full" />
-              <span className="bg-white px-3 text-xs text-[#827B77] uppercase tracking-wider font-medium">
-                ou
-              </span>
-              <div className="border-t border-[#EADBCE] w-full" />
-            </div>
-
-            {/* Botão CRIAR MINHA CONTA */}
-            <Link
-              href="/cadastro"
-              className="w-full block text-center py-3 px-6 rounded-full border border-[#B77D82] text-[#B77D82] hover:bg-[#F7EEEE] font-medium text-sm tracking-wide transition"
-            >
-              CRIAR MINHA CONTA
-            </Link>
-
-            {/* Bloco de Acesso Rápido para Teste */}
-            <div className="bg-[#FAF7F2] p-3 rounded-2xl border border-[#EADBCE] text-[11px] text-[#827B77] space-y-1">
-              <span className="font-semibold text-[#292321] block">Contas de Acesso Rápido:</span>
-              <div className="flex justify-between items-center">
-                <span>Aluna: aluna@pilatesemcasa.com.br</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail("aluna@pilatesemcasa.com.br");
-                    setPassword("aluna123");
-                  }}
-                  className="text-[#B77D82] font-semibold hover:underline"
-                >
-                  Preencher
-                </button>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Admin: admin@pilatesemcasa.com.br</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail("admin@pilatesemcasa.com.br");
-                    setPassword("admin123");
-                  }}
-                  className="text-[#B77D82] font-semibold hover:underline"
-                >
-                  Preencher
-                </button>
-              </div>
-            </div>
-
-            {/* Chamada para o Quiz / Plano Personalizado (Item 15) */}
             <div className="pt-2 border-t border-[#EADBCE]">
               <div className="bg-gradient-to-br from-[#FAF7F2] to-[#F3EAE3] p-5 rounded-2xl border border-[#EBD6D5] space-y-3">
                 <div className="flex items-center gap-2 text-[#B77D82]">
@@ -216,7 +170,7 @@ export default function LoginPage() {
 
       {/* Footer simples */}
       <footer className="text-center py-4 text-xs text-[#827B77]">
-        © 2026 {siteSettings.platformName}. Movimento consciente e bem-estar feminino.
+        Vitta Pilates. Todos os direitos reservados.
       </footer>
     </div>
   );

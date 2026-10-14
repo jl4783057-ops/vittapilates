@@ -122,8 +122,8 @@ export default function ResetPasswordPage() {
         </div>
       </div>
 
-      <footer className="text-center py-3 text-xs text-[#827B77]">
-        © 2026 {siteSettings.platformName}
+      <footer className="text-center py-4 text-xs text-[#827B77]">
+        Vitta Pilates. Todos os direitos reservados.
       </footer>
     </div>
   );

@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Compass, MessageCircle, User as UserIcon } from "lucide-react";
+import { Home, Compass, BookMarked, MessageCircle, User as UserIcon } from "lucide-react";
 
 export function StudentBottomNav() {
   const pathname = usePathname();
@@ -16,10 +16,16 @@ export function StudentBottomNav() {
       isActive: pathname === "/aluna",
     },
     {
-      label: "Programas",
+      label: "Explorar",
       href: "/aluna/programas",
       icon: Compass,
-      isActive: pathname?.startsWith("/aluna/programas") || pathname?.startsWith("/aluna/aula"),
+      isActive: pathname === "/aluna/programas" || (pathname?.startsWith("/aluna/programas") && !pathname?.includes("meus-treinos")),
+    },
+    {
+      label: "Meus treinos",
+      href: "/aluna/treinos",
+      icon: BookMarked,
+      isActive: pathname === "/aluna/treinos" || pathname?.startsWith("/aluna/aula"),
     },
     {
       label: "Comunidade",

@@ -307,6 +307,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateSiteSettings = (newSettings: Partial<SiteSettings>) => {
     setSiteSettings((prev) => {
       const updated = { ...prev, ...newSettings };
+      try {
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}settings`, JSON.stringify(updated));
+      } catch {}
       fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

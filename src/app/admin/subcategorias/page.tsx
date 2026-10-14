@@ -16,7 +16,28 @@ import {
 } from "lucide-react";
 
 export default function AdminSubcategoriesPage() {
-  const { categories, subcategories, addSubcategory, updateSubcategory, deleteSubcategory } = useApp();
+  const { categories, subcategories, addSubcategory, updateSubcategory, deleteSubcategory, setSubcategories } = useApp();
+
+  // Carregar subcategorias salvas no Supabase
+  React.useEffect(() => {
+    let isCancelled = false;
+    async function fetchSubcategories() {
+      try {
+        const res = await fetch("/api/admin/subcategories");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!isCancelled && Array.isArray(data.subcategories) && data.subcategories.length > 0) {
+          setSubcategories(data.subcategories);
+        }
+      } catch (err) {
+        console.warn("Aviso ao carregar subcategorias no painel admin:", err);
+      }
+    }
+    fetchSubcategories();
+    return () => {
+      isCancelled = true;
+    };
+  }, [setSubcategories]);
 
   const [filterCat, setFilterCat] = useState<string>("todas");
   const [editingSub, setEditingSub] = useState<Subcategory | null>(null);

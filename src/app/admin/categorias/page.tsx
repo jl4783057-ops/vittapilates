@@ -20,6 +20,27 @@ import {
 export default function AdminCategoriesPage() {
   const { categories, setCategories, addCategory, updateCategory, deleteCategory } = useApp();
 
+  // Carregar categorias salvas no Supabase
+  React.useEffect(() => {
+    let isCancelled = false;
+    async function fetchCategories() {
+      try {
+        const res = await fetch("/api/admin/categories");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!isCancelled && Array.isArray(data.categories) && data.categories.length > 0) {
+          setCategories(data.categories);
+        }
+      } catch (err) {
+        console.warn("Aviso ao carregar categorias no painel admin:", err);
+      }
+    }
+    fetchCategories();
+    return () => {
+      isCancelled = true;
+    };
+  }, [setCategories]);
+
   const [editingCat, setEditingCat] = useState<Category | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState({

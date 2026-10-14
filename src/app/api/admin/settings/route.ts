@@ -77,14 +77,47 @@ export async function PUT(request: NextRequest) {
     if (body.libraryHeroTitle !== undefined) updatePayload.library_hero_title = body.libraryHeroTitle;
     if (body.libraryHeroSubtitle !== undefined) updatePayload.library_hero_subtitle = body.libraryHeroSubtitle;
 
-    const { data, error } = await getSupabaseAdmin()
+    const admin = getSupabaseAdmin();
+    // Tenta atualizar a linha 1 existente
+    const updateResult = await admin
       .from("site_settings")
-      .upsert({ id: 1, ...updatePayload })
+      .update(updatePayload)
+      .eq("id", 1)
       .select("*")
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      throw error;
+    let data = updateResult.data;
+    if (updateResult.error) {
+      throw updateResult.error;
+    }
+
+    // Se a linha 1 ainda não existir, cria com os valores padrão mesclados
+    if (!data) {
+      const fullInsertPayload = {
+        id: 1,
+        platform_name: body.platformName ?? INITIAL_SETTINGS.platformName,
+        logo_text: body.logoText ?? INITIAL_SETTINGS.logoText,
+        logo_url: body.logoUrl ?? null,
+        login_title: body.loginTitle ?? INITIAL_SETTINGS.loginTitle,
+        login_subtitle: body.loginSubtitle ?? INITIAL_SETTINGS.loginSubtitle,
+        login_banner_url: body.loginBannerUrl ?? null,
+        whatsapp_community_url: body.whatsappCommunityUrl ?? INITIAL_SETTINGS.whatsappCommunityUrl,
+        whatsapp_community_title: body.whatsappCommunityTitle ?? INITIAL_SETTINGS.whatsappCommunityTitle,
+        whatsapp_community_subtitle: body.whatsappCommunitySubtitle ?? INITIAL_SETTINGS.whatsappCommunitySubtitle,
+        whatsapp_community_button_text: body.whatsappCommunityButtonText ?? INITIAL_SETTINGS.whatsappCommunityButtonText,
+        library_hero_title: body.libraryHeroTitle ?? INITIAL_SETTINGS.libraryHeroTitle,
+        library_hero_subtitle: body.libraryHeroSubtitle ?? INITIAL_SETTINGS.libraryHeroSubtitle,
+        ...updatePayload,
+      };
+
+      const insertResult = await admin
+        .from("site_settings")
+        .upsert(fullInsertPayload)
+        .select("*")
+        .single();
+
+      if (insertResult.error) throw insertResult.error;
+      data = insertResult.data;
     }
 
     return NextResponse.json({

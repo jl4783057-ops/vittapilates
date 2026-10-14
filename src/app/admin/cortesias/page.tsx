@@ -57,8 +57,6 @@ export default function AdminCortesiasPage() {
   const [renewDays, setRenewDays] = useState(30);
 
   const fetchGrants = async () => {
-    setLoading(true);
-    setError(null);
     try {
       const res = await fetch("/api/admin/cortesias");
       const data = await res.json();
@@ -66,6 +64,7 @@ export default function AdminCortesiasPage() {
         throw new Error(data.error || "Erro ao carregar cortesias.");
       }
       setGrants(data.grants || []);
+      setError(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -74,7 +73,29 @@ export default function AdminCortesiasPage() {
   };
 
   useEffect(() => {
-    fetchGrants();
+    let ignore = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/admin/cortesias");
+        const data = await res.json();
+        if (!ignore) {
+          if (!res.ok) {
+            setError(data.error || "Erro ao carregar cortesias.");
+          } else {
+            setGrants(data.grants || []);
+            setError(null);
+          }
+        }
+      } catch (err) {
+        if (!ignore) setError((err as Error).message);
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const handleCreate = async (e: React.FormEvent) => {

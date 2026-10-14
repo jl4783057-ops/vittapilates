@@ -35,6 +35,14 @@ export async function POST(request: Request) {
   const email = data.customer?.email ? normalizeEmail(String(data.customer.email)) : "";
   const name = String(data.customer?.name ?? "").trim() || email.split("@")[0];
   const orderId = String(data.id ?? data.refId ?? "");
+  // Keep only fields needed for troubleshooting; never persist the webhook credential
+  // or the provider's full customer/payment payload in our database.
+  const storedPayload = {
+    event,
+    orderId,
+    productId: data.product?.id == null ? null : String(data.product.id),
+    status: data.status == null ? null : String(data.status),
+  };
 
   const productFilter = process.env.CAKTO_PRODUCT_ID;
   if (productFilter && data.product?.id && String(data.product.id) !== productFilter) {
@@ -47,7 +55,7 @@ export async function POST(request: Request) {
   // Idempotency: Cakto may deliver the same event more than once.
   const { error: dupError } = await admin
     .from("cakto_orders")
-    .insert({ id: `${event}:${orderId}`, event, email, payload: body });
+    .insert({ id: `${event}:${orderId}`, event, email, payload: storedPayload });
   if (dupError?.code === "23505") return NextResponse.json({ duplicate: true });
   if (dupError) return NextResponse.json({ error: dupError.message }, { status: 500 });
 

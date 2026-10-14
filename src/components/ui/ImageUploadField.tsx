@@ -55,7 +55,6 @@ export function ImageUploadField({
       "image/png",
       "image/webp",
       "image/gif",
-      "image/svg+xml",
     ];
     if (!validTypes.includes(file.type)) {
       setError("Formato de arquivo não suportado. Por favor, envie uma imagem nos formatos JPG, PNG, WebP ou GIF.");

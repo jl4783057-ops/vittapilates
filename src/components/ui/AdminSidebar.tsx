@@ -22,26 +22,29 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-export function AdminSidebar() {
-  const pathname = usePathname();
-  const { siteSettings, logout } = useApp();
-  const [mobileOpen, setMobileOpen] = useState(false);
+interface NavContentProps {
+  siteSettings: {
+    logoUrl?: string;
+    platformName?: string;
+  };
+  pathname: string | null;
+  menuItems: Array<{
+    label: string;
+    href: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }>;
+  onCloseMobile: () => void;
+  onLogout: () => void;
+}
 
-  const menuItems = [
-    { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
-    { label: "Alunas", href: "/admin/alunas", icon: Users },
-    { label: "Assinaturas", href: "/admin/assinaturas", icon: CreditCard },
-    { label: "Cortesias (Influenciadoras)", href: "/admin/cortesias", icon: Gift },
-    { label: "Categorias", href: "/admin/categorias", icon: FolderTree },
-    { label: "Subcategorias", href: "/admin/subcategorias", icon: ListTree },
-    { label: "Aulas e Vídeos", href: "/admin/aulas", icon: Video },
-    { label: "Personalização do Site", href: "/admin/personalizacao", icon: Palette },
-    { label: "Quiz Personalizado", href: "/admin/quiz", icon: HelpCircle },
-    { label: "Relatórios", href: "/admin/relatorios", icon: BarChart3 },
-    { label: "Configurações", href: "/admin/configuracoes", icon: Settings },
-  ];
-
-  const NavContent = () => (
+function NavContent({
+  siteSettings,
+  pathname,
+  menuItems,
+  onCloseMobile,
+  onLogout,
+}: NavContentProps) {
+  return (
     <div className="flex flex-col h-full bg-[#FFFFFF] border-r border-[#EADBCE]">
       {/* Brand Header */}
       <div className="p-5 border-b border-[#EADBCE] flex items-center justify-between">
@@ -69,7 +72,7 @@ export function AdminSidebar() {
           </div>
         </div>
         <button
-          onClick={() => setMobileOpen(false)}
+          onClick={onCloseMobile}
           className="lg:hidden p-1.5 rounded-lg text-[#827B77] hover:bg-[#FAF7F2]"
         >
           <X className="w-5 h-5" />
@@ -89,7 +92,7 @@ export function AdminSidebar() {
             <Link
               key={item.href}
               href={item.href}
-              onClick={() => setMobileOpen(false)}
+              onClick={onCloseMobile}
               className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 isActive
                   ? "bg-[#F7EEEE] text-[#B77D82] font-semibold shadow-xs"
@@ -123,11 +126,7 @@ export function AdminSidebar() {
         </Link>
 
         <button
-          onClick={async () => {
-            await fetch("/api/admin/session", { method: "DELETE" });
-            logout();
-            window.location.assign("/admin/login");
-          }}
+          onClick={onLogout}
           className="w-full flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-medium text-rose-600 hover:bg-rose-50 transition"
         >
           <LogOut className="w-3.5 h-3.5" />
@@ -136,6 +135,32 @@ export function AdminSidebar() {
       </div>
     </div>
   );
+}
+
+export function AdminSidebar() {
+  const pathname = usePathname();
+  const { siteSettings, logout } = useApp();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const menuItems = [
+    { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
+    { label: "Alunas", href: "/admin/alunas", icon: Users },
+    { label: "Assinaturas", href: "/admin/assinaturas", icon: CreditCard },
+    { label: "Cortesias (Influenciadoras)", href: "/admin/cortesias", icon: Gift },
+    { label: "Categorias", href: "/admin/categorias", icon: FolderTree },
+    { label: "Subcategorias", href: "/admin/subcategorias", icon: ListTree },
+    { label: "Aulas e Vídeos", href: "/admin/aulas", icon: Video },
+    { label: "Personalização do Site", href: "/admin/personalizacao", icon: Palette },
+    { label: "Quiz Personalizado", href: "/admin/quiz", icon: HelpCircle },
+    { label: "Relatórios", href: "/admin/relatorios", icon: BarChart3 },
+    { label: "Configurações", href: "/admin/configuracoes", icon: Settings },
+  ];
+
+  const handleLogout = async () => {
+    await fetch("/api/admin/session", { method: "DELETE" });
+    logout();
+    window.location.assign("/admin/login");
+  };
 
   return (
     <>
@@ -175,12 +200,24 @@ export function AdminSidebar() {
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <NavContent />
+        <NavContent
+          siteSettings={siteSettings}
+          pathname={pathname}
+          menuItems={menuItems}
+          onCloseMobile={() => setMobileOpen(false)}
+          onLogout={handleLogout}
+        />
       </div>
 
       {/* Desktop Persistent Sidebar */}
       <aside aria-label="Menu administrativo lateral" className="hidden lg:block w-64 shrink-0 h-screen sticky top-0">
-        <NavContent />
+        <NavContent
+          siteSettings={siteSettings}
+          pathname={pathname}
+          menuItems={menuItems}
+          onCloseMobile={() => setMobileOpen(false)}
+          onLogout={handleLogout}
+        />
       </aside>
     </>
   );

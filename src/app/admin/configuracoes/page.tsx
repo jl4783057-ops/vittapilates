@@ -82,19 +82,19 @@ export default function AdminSettingsPage() {
                   : "bg-blue-50 text-blue-800"
               }`}
             >
-              {isSupabaseConfigured ? "Conectado" : "Modo Híbrido Reativo"}
+              {isSupabaseConfigured ? "Chaves do app definidas" : "Modo local"}
             </span>
           </div>
 
           <p className="text-xs text-[#827B77] leading-relaxed">
             {isSupabaseConfigured
-              ? "Instância Supabase conectada via variáveis de ambiente com autenticação, PostgreSQL e Storage ativos."
-              : "A aplicação está operando com camada reativa local persistente (LocalStorage). Para conectar sua nuvem Supabase, defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env.local e execute o script src/lib/supabase/schema.sql."}
+              ? "A URL e a chave publishable do Supabase estão configuradas. O banco, a autenticação e os fluxos administrativos ainda precisam ser preparados e conectados antes de considerar a integração completa."
+              : "A aplicação está operando com armazenamento local. Para iniciar a conexão, configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY no arquivo .env.local; revise as políticas de segurança antes de aplicar o schema."}
           </p>
 
           <div className="p-3 bg-[#FAF7F2] rounded-2xl border border-[#EADBCE] text-[11px] text-[#827B77] space-y-1">
             <p><strong>Script SQL:</strong> [`src/lib/supabase/schema.sql`](file:///Users/levimagalhaes/saas/pilatesass/src/lib/supabase/schema.sql)</p>
-            <p><strong>Políticas RLS:</strong> Prontas para alunas e administradoras.</p>
+            <p><strong>Políticas RLS:</strong> Revisão necessária antes de aplicar no projeto.</p>
           </div>
         </div>
 

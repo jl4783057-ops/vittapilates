@@ -3,8 +3,12 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // Service-role client: bypasses RLS. NEVER import this file from a client component.
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const serviceRoleKey =
+  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const anonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "";
 
 export const isSupabaseAdminConfigured = Boolean(
   url && serviceRoleKey && anonKey && !url.includes("your-project")

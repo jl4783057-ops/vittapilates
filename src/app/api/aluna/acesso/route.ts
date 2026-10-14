@@ -6,7 +6,18 @@ import { getStudentAccess, getUserFromBearer } from "@/lib/access";
 export async function GET(request: Request) {
   if (!isSupabaseAdminConfigured) return NextResponse.json({ error: "Supabase não configurado." }, { status: 503 });
 
-  const user = await getUserFromBearer(request);
+  let user = await getUserFromBearer(request);
+  if (!user) {
+    try {
+      const { createClientServer } = await import("@/lib/supabase/server");
+      const supabaseServer = await createClientServer();
+      const { data: { user: cookieUser } } = await supabaseServer.auth.getUser();
+      user = cookieUser;
+    } catch {
+      // Cookie reading fallback failed
+    }
+  }
+
   if (!user) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
 
   const { hasAccess, profile } = await getStudentAccess(user.id);

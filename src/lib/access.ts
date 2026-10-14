@@ -122,7 +122,8 @@ export async function getStudentAccess(userId: string) {
   }
 
   const hasAccess =
-    (profile.access_type === "subscriber" && profile.subscription_status === "active") ||
+    (profile.access_type === "subscriber" &&
+      (profile.subscription_status === "active" || profile.subscription_status === "trial")) ||
     (profile.access_type === "courtesy" &&
       !!profile.access_expires_at &&
       new Date(profile.access_expires_at) > new Date());

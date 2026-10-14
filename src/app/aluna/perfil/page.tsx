@@ -245,8 +245,8 @@ export default function StudentProfilePage() {
       {/* Ações de Conta: Logout e Exclusão (Item 11) */}
       <div className="space-y-2 pt-2">
         <button
-          onClick={() => {
-            logout();
+          onClick={async () => {
+            await logout();
             router.push("/login");
           }}
           className="w-full py-3.5 px-6 rounded-2xl bg-[#FFFFFF] border border-[#EADBCE] text-[#292321] hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-xs font-semibold transition flex items-center justify-center gap-2"

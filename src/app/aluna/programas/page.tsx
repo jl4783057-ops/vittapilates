@@ -25,29 +25,13 @@ function ProgramsContent() {
   const { categories, subcategories, lessons } = useApp();
 
   // Etapa 1: Categoria principal selecionada (objetivo). Se null, exibe lista de cards de objetivos.
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(
-    categoryParam || null
-  );
+  const [userSelectedCategory, setUserSelectedCategory] = useState<string | null>(null);
 
   // Etapa 2: Subcategoria selecionada (treino/região). Se null, exibe lista de cards de treinos/regiões do objetivo.
-  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(
-    subcategoryParam || null
-  );
+  const [userSelectedSubcategory, setUserSelectedSubcategory] = useState<string | null>(null);
 
-  // Sincroniza parâmetros de URL
-  useEffect(() => {
-    if (categoryParam) {
-      setSelectedCategory(categoryParam);
-      if (subcategoryParam) {
-        setSelectedSubcategory(subcategoryParam);
-      } else {
-        setSelectedSubcategory(null);
-      }
-    } else {
-      setSelectedCategory(null);
-      setSelectedSubcategory(null);
-    }
-  }, [categoryParam, subcategoryParam]);
+  const selectedCategory = userSelectedCategory !== null ? (userSelectedCategory || null) : (categoryParam || null);
+  const selectedSubcategory = userSelectedSubcategory !== null ? (userSelectedSubcategory || null) : (subcategoryParam || null);
 
   const publishedCategories = useMemo(
     () => categories.filter((c) => c.published).sort((a, b) => a.order - b.order),
@@ -90,24 +74,24 @@ function ProgramsContent() {
 
   // Handlers de navegação entre as 3 etapas
   const handleOpenCategory = (catSlug: string) => {
-    setSelectedCategory(catSlug);
-    setSelectedSubcategory(null);
+    setUserSelectedCategory(catSlug);
+    setUserSelectedSubcategory(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleOpenSubcategory = (subIdOrSlug: string) => {
-    setSelectedSubcategory(subIdOrSlug);
+    setUserSelectedSubcategory(subIdOrSlug);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleBackToCategories = () => {
-    setSelectedCategory(null);
-    setSelectedSubcategory(null);
+    setUserSelectedCategory("");
+    setUserSelectedSubcategory("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleBackToSubcategories = () => {
-    setSelectedSubcategory(null);
+    setUserSelectedSubcategory("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -178,7 +162,7 @@ function ProgramsContent() {
                 Nenhuma aula cadastrada neste treino
               </h3>
               <p className="text-xs text-[#827B77] max-w-sm mx-auto leading-relaxed">
-                Novas aulas e práticas guiadas para o foco "{currentSubcategoryData.name}" serão publicadas em breve.
+                Novas aulas e práticas guiadas para o foco &quot;{currentSubcategoryData.name}&quot; serão publicadas em breve.
               </p>
               <div className="pt-1">
                 <button

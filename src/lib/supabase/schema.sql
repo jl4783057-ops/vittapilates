@@ -122,40 +122,75 @@ ALTER TABLE public.site_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quiz_questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quiz_submissions ENABLE ROW LEVEL SECURITY;
 
+-- Helper seguro para evitar que as políticas consultem profiles recursivamente.
+-- A função lê somente o papel da usuária autenticada e não pode ser alterada pelo app.
+CREATE OR REPLACE FUNCTION public.current_user_is_admin()
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = (SELECT auth.uid()) AND role = 'admin'
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.current_user_is_admin() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.current_user_is_admin() TO authenticated;
+
 -- Regras de perfis:
 -- Aluna vê seu próprio perfil; Administradora vê todos os perfis.
 CREATE POLICY "Usuária visualiza seu próprio perfil" ON public.profiles
-  FOR SELECT USING (auth.uid() = id OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+  FOR SELECT USING ((SELECT auth.uid()) = id OR (SELECT public.current_user_is_admin()));
 
 CREATE POLICY "Usuária atualiza seu próprio perfil" ON public.profiles
-  FOR UPDATE USING (auth.uid() = id);
+  FOR UPDATE USING ((SELECT auth.uid()) = id)
+  WITH CHECK ((SELECT auth.uid()) = id);
+
+-- O navegador não pode se promover a admin, liberar a própria assinatura,
+-- ou alterar campos que só o servidor e o webhook devem controlar.
+REVOKE UPDATE ON public.profiles FROM anon, authenticated;
+GRANT UPDATE (name, avatar_url, phone, completed_lesson_ids, last_lesson_id, custom_plan, updated_at)
+  ON public.profiles TO authenticated;
 
 -- Regras de categorias e subcategorias:
 -- Todo mundo pode ler categorias publicadas; Admin pode gerenciar tudo.
 CREATE POLICY "Leitura pública de categorias publicadas" ON public.categories
-  FOR SELECT USING (published = true OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+  FOR SELECT USING (published = true OR (SELECT public.current_user_is_admin()));
 
 CREATE POLICY "Administradora gerencia categorias" ON public.categories
-  FOR ALL USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+  FOR ALL USING ((SELECT public.current_user_is_admin()))
+  WITH CHECK ((SELECT public.current_user_is_admin()));
 
 CREATE POLICY "Leitura pública de subcategorias publicadas" ON public.subcategories
-  FOR SELECT USING (published = true OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+  FOR SELECT USING (published = true OR (SELECT public.current_user_is_admin()));
 
 CREATE POLICY "Administradora gerencia subcategorias" ON public.subcategories
-  FOR ALL USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+  FOR ALL USING ((SELECT public.current_user_is_admin()))
+  WITH CHECK ((SELECT public.current_user_is_admin()));
 
 -- Regras de aulas:
--- Alunas com assinatura ativa podem ver aulas publicadas; Admin gerencia tudo.
-CREATE POLICY "Alunas ativas visualizam aulas publicadas" ON public.lessons
-  FOR SELECT USING (
-    (status = 'publicado' AND (
-      SELECT subscription_status FROM public.profiles WHERE id = auth.uid()
-    ) IN ('active', 'trial'))
-    OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin'
+-- Alunas com acesso válido (assinante ativa/trial ou cortesia no prazo) podem ler aulas publicadas.
+-- Administradoras podem visualizar e gerenciar tudo. Sem acesso para anon.
+CREATE POLICY "Alunas com acesso ativo visualizam aulas publicadas" ON public.lessons
+  FOR SELECT TO authenticated USING (
+    (status = 'publicado' AND EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = (SELECT auth.uid())
+        AND (
+          (access_type = 'subscriber' AND subscription_status IN ('active', 'trial'))
+          OR
+          (access_type = 'courtesy' AND access_expires_at IS NOT NULL AND access_expires_at > now())
+        )
+    ))
+    OR (SELECT public.current_user_is_admin())
   );
 
 CREATE POLICY "Administradora gerencia aulas" ON public.lessons
-  FOR ALL USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+  FOR ALL USING ((SELECT public.current_user_is_admin()))
+  WITH CHECK ((SELECT public.current_user_is_admin()));
 
 -- Regras de configurações do site:
 -- Leitura pública; Edição apenas admin.
@@ -163,7 +198,8 @@ CREATE POLICY "Leitura pública de configurações" ON public.site_settings
   FOR SELECT USING (true);
 
 CREATE POLICY "Administradora gerencia configurações" ON public.site_settings
-  FOR ALL USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+  FOR ALL USING ((SELECT public.current_user_is_admin()))
+  WITH CHECK ((SELECT public.current_user_is_admin()));
 
 -- Regras do Quiz:
 -- Leitura de perguntas por qualquer pessoa; Edição apenas admin.
@@ -171,10 +207,12 @@ CREATE POLICY "Leitura de perguntas do quiz" ON public.quiz_questions
   FOR SELECT USING (true);
 
 CREATE POLICY "Administradora gerencia quiz" ON public.quiz_questions
-  FOR ALL USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+  FOR ALL USING ((SELECT public.current_user_is_admin()))
+  WITH CHECK ((SELECT public.current_user_is_admin()));
 
-CREATE POLICY "Qualquer pessoa envia quiz" ON public.quiz_submissions
-  FOR INSERT WITH CHECK (true);
+-- Respostas do quiz podem conter dados pessoais. A gravação/leitura é feita
+-- pelo servidor depois de validações, nunca anonimamente pelo navegador.
+REVOKE ALL ON public.quiz_submissions FROM anon, authenticated;
 
 CREATE POLICY "Administradora lê submissões do quiz" ON public.quiz_submissions
-  FOR SELECT USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+  FOR SELECT USING ((SELECT public.current_user_is_admin()));

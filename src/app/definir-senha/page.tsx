@@ -105,14 +105,13 @@ function SetPasswordContent() {
           // Se após um pequeno intervalo ainda não há sessão identificada
           setTimeout(() => {
             if (isMounted && checkingSession) {
-              // Verifica se há token no hash da URL
               const hasHashToken =
                 typeof window !== "undefined" &&
-                window.location.hash.includes("access_token");
+                (window.location.hash.includes("access_token") || window.location.hash.includes("type=recovery"));
               if (!hasHashToken && !sessionData?.session) {
                 setHasValidSession(false);
                 setError(
-                  "Nenhum link de convite ativo encontrado. Verifique o link enviado para o seu e-mail."
+                  "Nenhum link de acesso válido ou sessão ativa encontrado. Por favor, utilize o link recebido no seu e-mail."
                 );
               } else {
                 setHasValidSession(true);
@@ -124,34 +123,21 @@ function SetPasswordContent() {
           return () => {
             authListener.subscription.unsubscribe();
           };
-        } catch (err: any) {
+        } catch (err: unknown) {
           if (isMounted) {
             setHasValidSession(false);
-            setError(err?.message || "Erro ao validar link de acesso.");
+            const msg = err instanceof Error ? err.message : "Erro ao validar link de acesso.";
+            setError(msg);
             setCheckingSession(false);
           }
         }
       } else {
-        // 2. Modo demonstrativo / antes da configuração das credenciais no .env
-        // Permite validar links de teste (ex: ?email=aluna@exemplo.com ou acesso direto)
-        const emailFromParam =
-          searchParams.get("email") ||
-          searchParams.get("login") ||
-          "aluna@vittapilates.com";
-
-        // Verifica se há flag de erro proposital
-        const isExpired = searchParams.get("expirado") === "true";
-
-        if (isExpired) {
+        // Se o Supabase não estiver configurado
+        if (isMounted) {
           setHasValidSession(false);
-          setError(
-            "Este link de primeiro acesso já expirou ou foi utilizado anteriormente."
-          );
-        } else {
-          setHasValidSession(true);
-          setUserEmail(emailFromParam);
+          setError("O serviço de autenticação não está configurado.");
+          setCheckingSession(false);
         }
-        setCheckingSession(false);
       }
     }
 
@@ -208,11 +194,12 @@ function SetPasswordContent() {
           }`
         );
       }, 2200);
-    } catch (err: any) {
-      setError(
-        err?.message ||
-          "Ocorreu um erro ao definir sua senha. Tente novamente mais tarde."
-      );
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Ocorreu um erro ao definir sua senha. Tente novamente mais tarde.";
+      setError(msg);
     } finally {
       setLoading(false);
     }

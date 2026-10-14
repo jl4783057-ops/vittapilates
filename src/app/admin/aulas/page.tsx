@@ -21,12 +21,33 @@ import {
 import ImageUploadField from "@/components/ui/ImageUploadField";
 
 export default function AdminLessonsPage() {
-  const { lessons, categories, subcategories, addLesson, updateLesson, deleteLesson } = useApp();
+  const { lessons, setLessons, categories, subcategories, addLesson, updateLesson, deleteLesson } = useApp();
 
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState<string>("todas");
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+
+  // Carregar todas as aulas do Supabase (inclusive rascunhos) com permissão administrativa
+  React.useEffect(() => {
+    let isCancelled = false;
+    async function fetchAdminLessons() {
+      try {
+        const res = await fetch("/api/admin/lessons");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!isCancelled && data.lessons && Array.isArray(data.lessons)) {
+          setLessons(data.lessons);
+        }
+      } catch (err) {
+        console.warn("Aviso ao carregar aulas no painel administrativo:", err);
+      }
+    }
+    fetchAdminLessons();
+    return () => {
+      isCancelled = true;
+    };
+  }, [setLessons]);
 
   const [formData, setFormData] = useState<{
     title: string;

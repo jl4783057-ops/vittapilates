@@ -20,13 +20,18 @@ export default function AdminCustomizationPage() {
     e.preventDefault();
     updateSiteSettings(form);
     try {
+      await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
       await fetch("/api/branding", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ logoUrl: form.logoUrl || null }),
       });
     } catch {
-      // Ignora erro se backend Supabase não estiver conectado no momento
+      // Ignora erro de rede se backend Supabase não estiver conectado no momento
     }
     setSuccess(true);
     setTimeout(() => setSuccess(false), 2500);

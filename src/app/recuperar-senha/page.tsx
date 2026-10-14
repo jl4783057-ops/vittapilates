@@ -3,21 +3,59 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useApp } from "@/lib/store/context";
-import { ArrowLeft, CheckCircle2, Mail } from "lucide-react";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { ArrowLeft, CheckCircle2, Mail, AlertCircle } from "lucide-react";
 
 export default function RecoverPasswordPage() {
   const { siteSettings } = useApp();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError("Por favor, informe seu e-mail cadastrado.");
+      return;
+    }
+
+    if (!isSupabaseConfigured || !supabase) {
+      setError("O serviço de autenticação não está disponível no momento. Contate o suporte.");
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+
+    try {
+      const redirectTo = `${window.location.origin}/definir-senha`;
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo,
+      });
+
+      if (resetError) {
+        if (resetError.message.toLowerCase().includes("too many requests")) {
+          setError("Muitas tentativas em pouco tempo. Aguarde alguns minutos antes de solicitar novamente.");
+        } else {
+          setError(
+            resetError.message ||
+              "Não foi possível enviar o e-mail de recuperação. Tente novamente mais tarde."
+          );
+        }
+        setLoading(false);
+        return;
+      }
+
       setSubmitted(true);
-    }, 500);
+    } catch (err: unknown) {
+      console.error("Erro ao solicitar recuperação de senha:", err);
+      setError("Erro de conexão ao enviar o link. Verifique sua internet e tente novamente.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -43,21 +81,31 @@ export default function RecoverPasswordPage() {
           </p>
         </div>
 
+        {error && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         {submitted ? (
           <div className="bg-[#FAF7F2] border border-[#EADBCE] p-5 rounded-2xl text-center space-y-3">
             <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
             <h2 className="text-sm font-semibold text-[#292321]">
-              Instruções Enviadas!
+              E-mail Enviado!
             </h2>
             <p className="text-xs text-[#827B77] leading-relaxed">
-              Enviamos um link para <strong>{email}</strong> com as instruções para criar uma nova senha.
+              Enviamos um link seguro para <strong>{email}</strong>. Abra o e-mail no seu dispositivo e clique no link para definir sua nova senha.
+            </p>
+            <p className="text-[11px] text-[#827B77]">
+              Se não encontrar a mensagem em alguns minutos, verifique também sua caixa de spam ou lixo eletrônico.
             </p>
             <div className="pt-2">
               <Link
-                href="/redefinir-senha"
+                href="/login"
                 className="text-xs text-[#B77D82] font-semibold hover:underline block"
               >
-                Simular link recebido (Redefinir Agora) →
+                Voltar à tela de login
               </Link>
             </div>
           </div>
@@ -89,7 +137,7 @@ export default function RecoverPasswordPage() {
       </div>
 
       <footer className="text-center py-3 text-xs text-[#827B77]">
-        © 2026 {siteSettings.platformName}
+        Vitta Pilates. Todos os direitos reservados.
       </footer>
     </div>
   );

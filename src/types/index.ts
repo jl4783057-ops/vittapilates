@@ -14,6 +14,8 @@ export interface User {
   subscriptionStatus: SubscriptionStatus;
   subscriptionPlan: SubscriptionPlan;
   subscriptionRenewalDate?: string;
+  accessType?: 'none' | 'subscriber' | 'courtesy';
+  accessExpiresAt?: string | null;
   completedLessonIds: string[];
   lastLessonId?: string;
   customPlan?: QuizPlanResult | null;

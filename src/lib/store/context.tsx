@@ -64,15 +64,8 @@ const STORAGE_KEY_PREFIX = "pilates_em_casa_v1_";
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}settings`);
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return INITIAL_SETTINGS;
-  });
+  // Source of truth is Supabase (via /api/catalog); never seed from localStorage.
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(INITIAL_SETTINGS);
 
   const [categories, setCategories] = useState<Category[]>(() => {
     if (typeof window !== "undefined") {
@@ -167,6 +160,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // tokens are managed separately by Supabase Auth.
       localStorage.removeItem(`${STORAGE_KEY_PREFIX}users`);
       localStorage.removeItem(`${STORAGE_KEY_PREFIX}current_user`);
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}settings`);
     } catch (e) {
       console.warn("Aviso ao limpar resíduos do LocalStorage:", e);
     }
@@ -292,7 +286,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}settings`, JSON.stringify(siteSettings));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}categories`, JSON.stringify(categories));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}subcategories`, JSON.stringify(subcategories));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}lessons`, JSON.stringify(lessons));
@@ -302,21 +295,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn("Erro ao salvar no LocalStorage:", e);
     }
-  }, [siteSettings, categories, subcategories, lessons, quizQuestions]);
+  }, [categories, subcategories, lessons, quizQuestions]);
 
   const updateSiteSettings = (newSettings: Partial<SiteSettings>) => {
-    setSiteSettings((prev) => {
-      const updated = { ...prev, ...newSettings };
-      try {
-        localStorage.setItem(`${STORAGE_KEY_PREFIX}settings`, JSON.stringify(updated));
-      } catch {}
-      fetch("/api/admin/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updated),
-      }).catch(() => {});
-      return updated;
-    });
+    // Local state only: persistence is done (and confirmed) by the caller via /api/admin/settings.
+    setSiteSettings((prev) => ({ ...prev, ...newSettings }));
   };
 
   const login = (email: string, role?: 'aluna' | 'admin'): boolean => {

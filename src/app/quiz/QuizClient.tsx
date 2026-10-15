@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import Link from "next/link";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { SiteSettings, QuizAnswers, QuizPlanResult } from "@/types";
 import {
@@ -27,7 +26,9 @@ import {
   Leaf,
   Compass,
   Zap,
-  Sparkles,
+  ShieldCheck,
+  ChevronDown,
+  ChevronUp,
   Lock,
 } from "lucide-react";
 
@@ -116,7 +117,7 @@ const INITIAL_ANSWERS: QuizAnswers = {
 export function QuizClient({ siteSettings }: QuizClientProps) {
   const router = useRouter();
 
-  // 1. Inicializador seguro da sessão (sem setState síncrono em useEffect)
+  // 1. Identificador de sessão isolado
   const [sessionId] = useState<string>(() => {
     if (typeof window === "undefined") return "";
     try {
@@ -131,7 +132,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     }
   });
 
-  // 2. Inicializador seguro do estado de respostas lendo da sessão
+  // 2. Respostas recuperadas do armazenamento isolado da sessão
   const [answers, setAnswers] = useState<QuizAnswers>(() => {
     if (typeof window === "undefined") return INITIAL_ANSWERS;
     try {
@@ -151,7 +152,11 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     return INITIAL_ANSWERS;
   });
 
-  // 3. Inicializador seguro da etapa ativa
+  // 3. Etapa atual
+  // 1: Abertura, 2: Aniversário, 3: Prova social, 4: Objetivo, 5: Peso ideal anterior, 6: Motivacional,
+  // 7: Área de atenção, 8: Tipo de corpo, 9: Formato desejado, 10: Rotina, 11: Energia, 12: Atividade,
+  // 13: Sono, 14: Hábitos, 15: Altura, 16: Peso atual, 17: Peso desejado, 18: Nome, 19: Resumo fitness,
+  // 20: Ritmo, 21: Plano de bem-estar, 22: Criando plano, 23: Plano pronto, 24: Página de vendas final
   const [currentStep, setCurrentStep] = useState<number>(() => {
     if (typeof window === "undefined") return 1;
     try {
@@ -160,8 +165,8 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         const saved = localStorage.getItem(`vitta_quiz_data_${sid}`);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (typeof parsed.step === "number" && parsed.step >= 1 && parsed.step <= 25) {
-            return parsed.step === 23 ? 22 : parsed.step; // Se parou em criação, volta para 22
+          if (typeof parsed.step === "number" && parsed.step >= 1 && parsed.step <= 24) {
+            return parsed.step === 22 ? 21 : parsed.step;
           }
         }
       }
@@ -171,7 +176,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     return 1;
   });
 
-  // Campos locais para dia, mês, ano
+  // Campos de dia, mês e ano
   const [birthDay, setBirthDay] = useState<string>(() => {
     if (answers.birthDate) {
       const parts = answers.birthDate.split("-");
@@ -194,11 +199,14 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     return "";
   });
 
-  // Estado da etapa 23 (Criação do plano)
-  const [creationProgress, setCreationProgress] = useState(0);
-  const [creationStepText, setCreationStepText] = useState("Organizando suas preferências...");
+  // Estado da etapa 22 (Criando seu plano - indicador circular)
+  const [creationProgress, setCreationProgress] = useState(8);
+  const [creationPhaseIndex, setCreationPhaseIndex] = useState(0);
 
-  // Salvar progresso no localStorage isolado a cada alteração
+  // FAQ accordion aberto/fechado na página de vendas final
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+
+  // Salvar no localStorage isolado
   useEffect(() => {
     if (!sessionId) return;
     try {
@@ -211,7 +219,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     }
   }, [answers, currentStep, sessionId]);
 
-  // Função para compor e salvar data de nascimento sem depender de useEffect em cascata
+  // Atualização direta de data de nascimento
   const updateBirthParts = (newD: string, newM: string, newY: string) => {
     setBirthDay(newD);
     setBirthMonth(newM);
@@ -255,7 +263,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     return { diff, pct };
   }, [answers.currentWeightKg, answers.targetWeightKg]);
 
-  // Data de acompanhamento de 2 meses
+  // Data de acompanhamento de 2 meses calculada a cada renderização
   const followUpDateStr = useMemo(() => {
     return getTwoMonthsFollowUpDate();
   }, []);
@@ -288,29 +296,29 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     }
   };
 
-  // Iniciar criação do plano da Etapa 22 para a 23
+  // Animação de criação de plano (Etapa 22)
   const startPlanCreation = () => {
-    setCurrentStep(23);
-    setCreationProgress(10);
-    setCreationStepText("Organizando suas preferências de rotina...");
+    setCurrentStep(22);
+    setCreationProgress(8);
+    setCreationPhaseIndex(0);
 
     setTimeout(() => {
-      setCreationProgress(45);
-      setCreationStepText("Estruturando o acompanhamento para o seu objetivo...");
-    }, 800);
+      setCreationProgress(42);
+      setCreationPhaseIndex(1);
+    }, 700);
 
     setTimeout(() => {
-      setCreationProgress(80);
-      setCreationStepText("Finalizando seu marco de acompanhamento...");
-    }, 1600);
+      setCreationProgress(84);
+      setCreationPhaseIndex(2);
+    }, 1400);
 
     setTimeout(() => {
       setCreationProgress(100);
       syncWithServer();
       setTimeout(() => {
-        setCurrentStep(24);
+        setCurrentStep(23); // Plano pronto
       }, 500);
-    }, 2400);
+    }, 2200);
   };
 
   // Validação para habilitar o botão "Próximo"
@@ -356,13 +364,13 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         return true;
       case 20:
         return Boolean(answers.desiredPace);
+      case 21:
+        return true;
       case 22:
-        return true;
-      case 23:
         return false;
-      case 24:
+      case 23:
         return true;
-      case 25:
+      case 24:
         return true;
       default:
         return true;
@@ -371,21 +379,12 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
 
   const handleNext = () => {
     if (!canAdvance) return;
-    if (currentStep === 20) {
-      // Pula para 22 (etapa 21 omitida sem inventar perguntas)
-      setCurrentStep(22);
-      return;
-    }
-    if (currentStep < 25) {
+    if (currentStep < 24) {
       setCurrentStep((prev) => prev + 1);
     }
   };
 
   const handleBack = () => {
-    if (currentStep === 22) {
-      setCurrentStep(20);
-      return;
-    }
     if (currentStep > 1) {
       setCurrentStep((prev) => prev - 1);
     } else {
@@ -393,7 +392,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     }
   };
 
-  // Seletor de opções para Dia, Mês, Ano
+  // Opções para dia, mês e ano
   const daysOptions = useMemo(() => Array.from({ length: 31 }, (_, i) => i + 1), []);
   const monthsOptions = useMemo(
     () => [
@@ -423,7 +422,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     return list;
   }, []);
 
-  // Toggle de hábitos com regra exclusiva de "Nenhum dos itens acima"
+  // Toggle de hábitos com regra exclusiva para "Nenhum dos itens acima"
   const toggleBadHabit = (item: string) => {
     setAnswers((prev) => {
       const currentList = prev.badHabits || [];
@@ -439,43 +438,50 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     });
   };
 
-  // Seção do quiz para o cabeçalho
-  const sectionName = useMemo(() => {
-    if (currentStep === 1) return "";
-    if (currentStep <= 3) return "Sobre Você";
-    if (currentStep <= 6) return "Objetivos";
-    if (currentStep <= 9) return "Seu Corpo";
-    if (currentStep <= 13) return "Hábitos";
-    if (currentStep === 14) return "Nutrição";
-    if (currentStep <= 17) return "Medidas";
-    if (currentStep <= 18) return "Personalização";
-    if (currentStep === 19) return "Resumo";
-    if (currentStep === 20) return "Ritmo";
-    if (currentStep <= 22) return "Seu Plano";
-    if (currentStep === 23) return "Processamento";
-    if (currentStep === 24) return "Plano Pronto";
-    return "Oferta Especial";
-  }, [currentStep]);
-
-  // Progresso relativo
-  const progressPercent = Math.min(100, Math.round((currentStep / 25) * 100));
+  // Progresso relativo na barra horizontal (sem texto de etapa ou porcentagem no cabeçalho)
+  const progressRatio = Math.min(100, Math.round((currentStep / 24) * 100));
 
   // URL do checkout configurada
   const checkoutUrl = process.env.NEXT_PUBLIC_CHECKOUT_URL;
 
+  // Perguntas Frequentes (FAQ) da Vitta Pilates
+  const faqs = [
+    {
+      q: "O que está incluído no acesso?",
+      a: "Acesso completo e ilimitado a todas as aulas de Pilates organizadas por categorias, sequências guiadas do iniciante ao avançado, direcionamento personalizado pelo quiz e disponibilidade total pelo celular, tablet ou computador.",
+    },
+    {
+      q: "Como acesso a área da aluna após a compra?",
+      a: "Imediatamente após a confirmação do pagamento, você recebe um e-mail com seu link exclusivo para definir a senha da sua conta e começar sua prática sem espera.",
+    },
+    {
+      q: "Como funciona a garantia de 7 dias?",
+      a: "Você tem 7 dias corridos para experimentar o método e praticar as aulas. Se por qualquer motivo não se adaptar, basta solicitar o reembolso que devolvemos 100% do valor pago, sem burocracia.",
+    },
+    {
+      q: "O plano é personalizado?",
+      a: "Sim. Suas respostas sobre objetivo, rotina e biotipo são utilizadas para indicar os treinos mais seguros e eficazes para o seu momento corporal, respeitando sempre o seu ritmo.",
+    },
+    {
+      q: "O conteúdo recebe atualizações?",
+      a: "Sim! Nossa grade de aulas recebe atualizações mensais de conteúdo para manter sua prática dinâmica, motivadora e consistente.",
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#292321] flex flex-col justify-between p-4 sm:p-6 selection:bg-[#EBD6D5] selection:text-[#292321]">
       {/* ============================================================ */}
-      {/* TOPO COM LOGO OFICIAL DA VITTA PILATES (IGUAL AO LOGIN) */}
+      {/* CABEÇALHO CONFORME REGRA: LOGO + BARRA HORIZONTAL PURA */}
+      {/* (Sem número de etapa, sem total de etapas, sem %) */}
       {/* ============================================================ */}
       <header className="max-w-xl mx-auto w-full pt-1 pb-3 flex flex-col items-center">
         <div className="flex items-center justify-between w-full mb-3">
-          {currentStep > 1 && currentStep !== 23 ? (
+          {currentStep > 1 && currentStep !== 22 ? (
             <button
               type="button"
               onClick={handleBack}
               aria-label="Voltar para a etapa anterior"
-              className="inline-flex items-center gap-1.5 text-xs text-[#827B77] hover:text-[#292321] transition font-medium px-2.5 py-1.5 rounded-lg hover:bg-[#F3EAE3] cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs text-[#827B77] hover:text-[#292321] transition font-medium px-2.5 py-1.5 rounded-lg hover:bg-[#F3EAE3] cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Voltar</span>
@@ -484,7 +490,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
             <div className="w-16" />
           )}
 
-          {/* Logomarca idêntica à do login */}
+          {/* Logomarca oficial da Vitta Pilates (igual à tela de login) */}
           <div className="flex flex-col items-center">
             {siteSettings.logoUrl ? (
               <img
@@ -499,37 +505,22 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
             )}
           </div>
 
-          <div className="w-16 flex justify-end">
-            {currentStep > 1 && sectionName && (
-              <span className="text-[11px] font-semibold text-[#827B77] uppercase tracking-wider hidden sm:inline-block">
-                {sectionName}
-              </span>
-            )}
-          </div>
+          <div className="w-16" />
         </div>
 
-        {/* Indicador de Progresso com Seção */}
-        {currentStep > 1 && currentStep !== 23 && (
-          <div className="w-full space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] text-[#827B77]">
-              <span>
-                {sectionName && <strong className="text-[#292321] mr-1">{sectionName}</strong>}
-                Etapa {currentStep} de 25
-              </span>
-              <span className="font-semibold text-[#B77D82]">{progressPercent}%</span>
-            </div>
-            <div className="w-full h-1.5 bg-[#F3EAE3] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#B77D82] rounded-full transition-all duration-300 ease-out"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
+        {/* Barra horizontal de progresso simples (sem texto ou %) */}
+        {currentStep > 1 && currentStep !== 22 && currentStep !== 24 && (
+          <div className="w-full h-1.5 bg-[#F3EAE3] rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#B77D82] rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${progressRatio}%` }}
+            />
           </div>
         )}
       </header>
 
       {/* ============================================================ */}
-      {/* CORPO DO QUIZ - CADA UMA DAS 25 ETAPAS */}
+      {/* CONTEÚDO PRINCIPAL DO QUIZ */}
       {/* ============================================================ */}
       <main className="max-w-xl mx-auto w-full my-auto py-2 sm:py-4">
         {/* ------------------------------------------------------------ */}
@@ -544,7 +535,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
             <div className="w-full max-w-sm mx-auto rounded-2xl overflow-hidden border border-[#EADBCE] bg-[#FAF7F2] shadow-xs">
               <img
                 src="/images/quiz/intro-collage.webp"
-                alt="Colagem com práticas de exercícios e alimentação equilibrada"
+                alt="Colagem de práticas de exercícios e alimentação equilibrada"
                 className="w-full h-auto object-cover"
               />
             </div>
@@ -563,7 +554,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 2: DATA DE NASCIMENTO */}
+        {/* ETAPA 2: ANIVERSÁRIO */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 2 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
@@ -576,7 +567,6 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
               </p>
             </div>
 
-            {/* Seletor aberto de Dia, Mês e Ano pronto para interação */}
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-2.5">
                 {/* Dia */}
@@ -640,7 +630,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 </div>
               </div>
 
-              {/* Entrada alternativa direta e acessível */}
+              {/* Calendário nativo acessível */}
               <div className="pt-1">
                 <label htmlFor="birthDateManual" className="text-[11px] text-[#827B77] block mb-1">
                   Ou selecione diretamente no calendário:
@@ -664,7 +654,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 />
               </div>
 
-              {/* Indicador de Idade calculada dinamicamente */}
+              {/* Idade calculada dinamicamente */}
               {currentAge !== null && (
                 <div className="p-3.5 rounded-2xl bg-[#F7EEEE] border border-[#EBD6D5] text-xs text-[#292321] flex items-center justify-between">
                   <span className="text-[#827B77]">Idade calculada para o plano:</span>
@@ -704,7 +694,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
             <div className="w-full max-w-md mx-auto rounded-2xl overflow-hidden border border-[#EADBCE] bg-[#FAF7F2] shadow-xs">
               <img
                 src="/images/quiz/social-proof.webp"
-                alt="Grupo de mulheres em comunidade praticando Pilates"
+                alt="Grupo de mulheres em comunidade praticando Vitta Pilates"
                 className="w-full h-auto object-cover"
               />
             </div>
@@ -814,7 +804,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 5: ÚLTIMA VEZ NO PESO IDEAL */}
+        {/* ETAPA 5: PESO IDEAL ANTERIOR */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 5 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
@@ -871,25 +861,19 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 6: MENSAGEM MOTIVACIONAL */}
+        {/* ETAPA 6: TELA MOTIVACIONAL */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 6 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 text-center space-y-6">
-            <div className="w-12 h-12 rounded-2xl bg-[#F7EEEE] text-[#B77D82] flex items-center justify-center mx-auto">
-              <Sparkles className="w-6 h-6" />
-            </div>
-
-            <div className="space-y-3 max-w-md mx-auto">
-              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
-                Sabemos como fazer isso acontecer!
-              </h2>
-              <p className="text-sm text-[#292321] leading-relaxed">
-                A vida tem muitos desafios, mas sua rotina de movimento não precisa ser mais um deles.
-              </p>
-              <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed pt-1">
-                Os treinos da Vitta Pilates ajudam você a avançar no seu próprio ritmo.
-              </p>
-            </div>
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
+              Sabemos como fazer isso acontecer!
+            </h2>
+            <p className="text-sm text-[#292321] leading-relaxed max-w-md mx-auto">
+              A vida tem muitos desafios, mas sua rotina de movimento não precisa ser mais um deles.
+            </p>
+            <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-md mx-auto">
+              Os treinos da Vitta Pilates ajudam você a avançar no seu próprio ritmo.
+            </p>
 
             <div className="pt-2">
               <button
@@ -905,7 +889,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 7: ÁREA QUE PRECISA DE ATENÇÃO */}
+        {/* ETAPA 7: ÁREA QUE PRECISA DE ATENÇÃO (RECORTE TRANSPARENTE) */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 7 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
@@ -913,13 +897,13 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
               Qual área precisa de mais atenção?
             </h2>
 
-            {/* Layout responsivo com a mulher em pé ao lado das opções */}
+            {/* Personagem com transparência real ao lado das opções */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-              <div className="rounded-2xl overflow-hidden border border-[#EADBCE] bg-[#FAF7F2] max-h-72 sm:max-h-80 flex items-center justify-center">
+              <div className="flex items-center justify-center max-h-72 sm:max-h-80">
                 <img
-                  src="/images/quiz/woman-standing.webp"
-                  alt="Ilustração da aluna em pé"
-                  className="h-full w-auto object-contain max-h-72 sm:max-h-80"
+                  src="/images/quiz/woman-standing-transparent.png"
+                  alt="Personagem feminina de corpo inteiro"
+                  className="h-full w-auto object-contain max-h-64 sm:max-h-80 drop-shadow-xs"
                 />
               </div>
 
@@ -968,26 +952,20 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 8: TIPO DE CORPO ATUAL */}
+        {/* ETAPA 8: TIPO DE CORPO ATUAL (TRANSPARÊNCIA REAL) */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 8 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="space-y-1">
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
-                Qual é o seu tipo de corpo?
-              </h2>
-              <p className="text-xs text-[#827B77]">
-                Selecione a estrutura que mais se aproxima do seu biotipo atual.
-              </p>
-            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+              Qual é o seu tipo de corpo?
+            </h2>
 
-            {/* Grade 2x2 com as figuras recortadas */}
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               {[
-                { id: "Retangular", name: "Retangular", img: "/images/quiz/body-retangular.webp" },
-                { id: "Ampulheta", name: "Ampulheta", img: "/images/quiz/body-ampulheta.webp" },
-                { id: "Pêra", name: "Pêra", img: "/images/quiz/body-pera.webp" },
-                { id: "Circular", name: "Circular", img: "/images/quiz/body-circular.webp" },
+                { id: "Retangular", name: "Retangular", img: "/images/quiz/body-retangular-transparent.png" },
+                { id: "Ampulheta", name: "Ampulheta", img: "/images/quiz/body-ampulheta-transparent.png" },
+                { id: "Pêra", name: "Pêra", img: "/images/quiz/body-pera-transparent.png" },
+                { id: "Circular", name: "Circular", img: "/images/quiz/body-circular-transparent.png" },
               ].map((bt) => {
                 const isSelected = answers.bodyType === bt.name;
                 return (
@@ -1001,11 +979,11 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                         : "bg-[#FFFFFF] border-[#EADBCE] hover:bg-[#FAF7F2] hover:border-[#B77D82]/50"
                     }`}
                   >
-                    <div className="w-full aspect-[3/4] max-h-48 rounded-xl overflow-hidden bg-[#FAF7F2] mb-2 flex items-center justify-center">
+                    <div className="w-full aspect-[3/4] max-h-44 flex items-center justify-center mb-1">
                       <img
                         src={bt.img}
                         alt={`Tipo de corpo ${bt.name}`}
-                        className="w-full h-full object-contain p-1"
+                        className="w-full h-full object-contain drop-shadow-2xs"
                       />
                     </div>
                     <span className={`text-xs sm:text-sm font-semibold ${isSelected ? "text-[#B77D82]" : "text-[#292321]"}`}>
@@ -1031,26 +1009,20 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 9: FORMATO DE CORPO DESEJADO */}
+        {/* ETAPA 9: FORMATO DESEJADO (TRANSPARÊNCIA REAL) */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 9 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="space-y-1">
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
-                Qual é o formato de corpo que você deseja alcançar?
-              </h2>
-              <p className="text-xs text-[#827B77]">
-                Selecione sua preferência visual para alinharmos o foco dos treinos.
-              </p>
-            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+              Qual é o formato de corpo que você deseja alcançar?
+            </h2>
 
-            {/* Grade 2x2 com as figuras recortadas */}
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               {[
-                { id: "Magro", name: "Magro", img: "/images/quiz/goal-magro.webp" },
-                { id: "Tonificado", name: "Tonificado", img: "/images/quiz/goal-tonificado.webp" },
-                { id: "Com curvas", name: "Com curvas", img: "/images/quiz/goal-curvas.webp" },
-                { id: "Um tamanho menor", name: "Um tamanho menor", img: "/images/quiz/goal-tamanho-menor.webp" },
+                { id: "Magro", name: "Magro", img: "/images/quiz/goal-magro-transparent.png" },
+                { id: "Tonificado", name: "Tonificado", img: "/images/quiz/goal-tonificado-transparent.png" },
+                { id: "Com curvas", name: "Com curvas", img: "/images/quiz/goal-curvas-transparent.png" },
+                { id: "Um tamanho menor", name: "Um tamanho menor", img: "/images/quiz/goal-tamanho-menor-transparent.png" },
               ].map((gt) => {
                 const isSelected = answers.desiredBodyShape === gt.name;
                 return (
@@ -1064,11 +1036,11 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                         : "bg-[#FFFFFF] border-[#EADBCE] hover:bg-[#FAF7F2] hover:border-[#B77D82]/50"
                     }`}
                   >
-                    <div className="w-full aspect-[3/4] max-h-48 rounded-xl overflow-hidden bg-[#FAF7F2] mb-2 flex items-center justify-center">
+                    <div className="w-full aspect-[3/4] max-h-44 flex items-center justify-center mb-1">
                       <img
                         src={gt.img}
                         alt={`Formato desejado ${gt.name}`}
-                        className="w-full h-full object-contain p-1"
+                        className="w-full h-full object-contain drop-shadow-2xs"
                       />
                     </div>
                     <span className={`text-xs sm:text-sm font-semibold ${isSelected ? "text-[#B77D82]" : "text-[#292321]"}`}>
@@ -1094,18 +1066,13 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 10: ROTINA DIÁRIA */}
+        {/* ETAPA 10: ROTINA */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 10 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82]">
-                Hábitos
-              </span>
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
-                Como é o seu dia normalmente?
-              </h2>
-            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+              Como é o seu dia normalmente?
+            </h2>
 
             <div className="space-y-2.5">
               {[
@@ -1167,18 +1134,13 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 11: NÍVEIS DE ENERGIA */}
+        {/* ETAPA 11: ENERGIA */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 11 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82]">
-                Hábitos
-              </span>
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
-                Como são seus níveis de energia durante o dia?
-              </h2>
-            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+              Como são seus níveis de energia durante o dia?
+            </h2>
 
             <div className="space-y-2.5">
               {[
@@ -1239,18 +1201,13 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 12: NÍVEL DE ATIVIDADE */}
+        {/* ETAPA 12: ATIVIDADE */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 12 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82]">
-                Hábitos
-              </span>
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
-                Quão ativa você está?
-              </h2>
-            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+              Quão ativa você está?
+            </h2>
 
             <div className="space-y-2.5">
               {[
@@ -1305,14 +1262,9 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         {/* ------------------------------------------------------------ */}
         {currentStep === 13 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82]">
-                Hábitos
-              </span>
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
-                Quanto você dorme?
-              </h2>
-            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+              Quanto você dorme?
+            </h2>
 
             <div className="space-y-2.5">
               {[
@@ -1363,14 +1315,11 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 14: HÁBITOS QUE PODEM DIFICULTAR O OBJETIVO */}
+        {/* ETAPA 14: HÁBITOS */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 14 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
             <div className="space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82]">
-                Nutrição
-              </span>
               <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
                 Quais hábitos dificultam você de atingir seus objetivos?
               </h2>
@@ -1445,17 +1394,9 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         {/* ------------------------------------------------------------ */}
         {currentStep === 15 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82]">
-                Medidas
-              </span>
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
-                Qual é a sua altura?
-              </h2>
-              <p className="text-xs text-[#827B77]">
-                Utilizada para o cálculo de proporção e biomecânica dos treinos.
-              </p>
-            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+              Qual é a sua altura?
+            </h2>
 
             <div className="space-y-5 text-center py-2">
               <div className="inline-flex items-baseline gap-1 bg-[#FAF7F2] border border-[#EADBCE] px-6 py-4 rounded-3xl">
@@ -1465,7 +1406,6 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 <span className="text-sm font-bold text-[#827B77] uppercase">cm</span>
               </div>
 
-              {/* Slider de rolagem suave */}
               <div className="space-y-2 max-w-sm mx-auto">
                 <input
                   type="range"
@@ -1483,7 +1423,6 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 </div>
               </div>
 
-              {/* Entrada manual direta e acessível */}
               <div className="max-w-xs mx-auto text-left space-y-1 pt-2">
                 <label htmlFor="heightInputManual" className="text-[11px] text-[#827B77] block text-center">
                   Ou digite sua altura exata:
@@ -1524,21 +1463,13 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 16: PESO ATUAL E IMC */}
+        {/* ETAPA 16: PESO ATUAL */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 16 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82]">
-                Medidas
-              </span>
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
-                Qual é o seu peso atual?
-              </h2>
-              <p className="text-xs text-[#827B77]">
-                Seu peso é confidencial e ajuda a estimar o impacto articular nas aulas.
-              </p>
-            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+              Qual é o seu peso atual?
+            </h2>
 
             <div className="space-y-4 text-center py-1">
               <div className="inline-flex items-baseline gap-1 bg-[#FAF7F2] border border-[#EADBCE] px-6 py-4 rounded-3xl">
@@ -1548,7 +1479,6 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 <span className="text-sm font-bold text-[#827B77] uppercase">kg</span>
               </div>
 
-              {/* Slider de rolagem */}
               <div className="space-y-2 max-w-sm mx-auto">
                 <input
                   type="range"
@@ -1568,7 +1498,6 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 </div>
               </div>
 
-              {/* Entrada manual direta */}
               <div className="max-w-xs mx-auto text-left space-y-1">
                 <label htmlFor="weightInputManual" className="text-[11px] text-[#827B77] block text-center">
                   Ou digite seu peso atual em kg:
@@ -1594,22 +1523,18 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 </div>
               </div>
 
-              {/* Bloco de IMC Atualizado em Tempo Real */}
-              {calculatedBmi !== null ? (
-                <div className="p-4 rounded-2xl bg-[#F7EEEE] border border-[#EBD6D5] text-left space-y-2 mt-2">
+              {/* Bloco de IMC */}
+              {calculatedBmi !== null && (
+                <div className="p-4 rounded-2xl bg-[#F7EEEE] border border-[#EBD6D5] text-left space-y-1.5 mt-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-[#827B77]">
-                      Índice de Massa Corporal (IMC) estimado:
+                      Índice de Massa Corporal (IMC) atualizado:
                     </span>
                     <span className="text-base font-bold text-[#B77D82]">{calculatedBmi}</span>
                   </div>
-                  <div className="text-[11px] text-[#827B77] leading-relaxed">
-                    Fórmula oficial da OMS: peso ÷ (altura × altura). O IMC é uma referência de planejamento físico e não constitui diagnóstico clínico individual.
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] text-[11px] text-[#827B77]">
-                  Informe um peso válido para visualizar seu IMC em tempo real.
+                  <p className="text-[11px] text-[#827B77]">
+                    Parâmetro de referência da OMS: peso ÷ (altura × altura). Não constitui avaliação clínica individual.
+                  </p>
                 </div>
               )}
             </div>
@@ -1633,17 +1558,9 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         {/* ------------------------------------------------------------ */}
         {currentStep === 17 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82]">
-                Medidas
-              </span>
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
-                Qual é o seu objetivo de peso?
-              </h2>
-              <p className="text-xs text-[#827B77]">
-                Selecione o peso com o qual você se sentirá mais confortável e disposta.
-              </p>
-            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+              Qual é o seu objetivo de peso?
+            </h2>
 
             <div className="space-y-4 text-center py-1">
               <div className="inline-flex items-baseline gap-1 bg-[#FAF7F2] border border-[#EADBCE] px-6 py-4 rounded-3xl">
@@ -1653,7 +1570,6 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 <span className="text-sm font-bold text-[#827B77] uppercase">kg</span>
               </div>
 
-              {/* Slider de rolagem */}
               <div className="space-y-2 max-w-sm mx-auto">
                 <input
                   type="range"
@@ -1673,7 +1589,6 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 </div>
               </div>
 
-              {/* Entrada manual direta */}
               <div className="max-w-xs mx-auto text-left space-y-1">
                 <label htmlFor="targetWeightManual" className="text-[11px] text-[#827B77] block text-center">
                   Ou digite seu peso objetivo em kg:
@@ -1699,9 +1614,9 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 </div>
               </div>
 
-              {/* Comparativo de diferença calculado sem valores fictícios */}
+              {/* Diferença calculada em relação ao peso atual */}
               {weightDiff !== null && (
-                <div className="p-4 rounded-2xl bg-[#F7EEEE] border border-[#EBD6D5] text-left space-y-1.5 mt-2">
+                <div className="p-4 rounded-2xl bg-[#F7EEEE] border border-[#EBD6D5] text-left space-y-1 mt-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-[#827B77]">Variação em relação ao peso atual:</span>
                     <span className="font-bold text-[#B77D82] text-sm">
@@ -1710,10 +1625,10 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                   </div>
                   <p className="text-[11px] text-[#827B77]">
                     {weightDiff.diff < 0
-                      ? `Meta de redução gradual de ${Math.abs(weightDiff.diff)} kg (${weightDiff.pct}% do peso atual), focando em consistência e fortalecimento.`
+                      ? `Meta pessoal de redução de ${Math.abs(weightDiff.diff)} kg (${weightDiff.pct}% do peso atual), focando em consistência e fortalecimento.`
                       : weightDiff.diff > 0
-                      ? `Meta de ganho de ${weightDiff.diff} kg com foco em massa muscular, postura e vitalidade.`
-                      : "Meta voltada para manutenção do peso, tonificação e bem-estar geral."}
+                      ? `Meta de ganho de ${weightDiff.diff} kg para fortalecimento e postura.`
+                      : "Meta voltada para manutenção do peso, tonificação e bem-estar."}
                   </p>
                 </div>
               )}
@@ -1738,24 +1653,16 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         {/* ------------------------------------------------------------ */}
         {currentStep === 18 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82]">
-                Personalização
-              </span>
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
-                Qual é o seu nome?
-              </h2>
-              <p className="text-xs text-[#827B77]">
-                Vamos personalizar todo o seu plano de treinos para você.
-              </p>
-            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+              Qual é o seu nome?
+            </h2>
 
             <div className="space-y-2">
               <input
                 type="text"
                 value={answers.name || ""}
                 onChange={(e) => setAnswers((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="Digite seu nome completo ou primeiro nome"
+                placeholder="Digite seu nome"
                 className="w-full px-4 py-3.5 rounded-2xl border border-[#EADBCE] bg-[#FAF7F2] text-sm text-[#292321] placeholder:text-[#827B77]/60 focus:outline-none focus:ring-2 focus:ring-[#B77D82]/50"
                 autoFocus
               />
@@ -1776,7 +1683,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 19: RESUMO DO NÍVEL FITNESS */}
+        {/* ETAPA 19: RESUMO DO NÍVEL FITNESS (RECORTE TRANSPARENTE) */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 19 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
@@ -1785,18 +1692,15 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-              {/* Personagem de corpo inteiro anexada */}
-              <div className="rounded-2xl overflow-hidden border border-[#EADBCE] bg-[#FAF7F2] flex items-center justify-center p-2 max-h-72 sm:max-h-80">
+              <div className="flex items-center justify-center max-h-72 sm:max-h-80">
                 <img
-                  src="/images/quiz/woman-standing.webp"
-                  alt="Ilustração da aluna em corpo inteiro"
-                  className="h-full w-auto object-contain max-h-64 sm:max-h-72"
+                  src="/images/quiz/woman-standing-transparent.png"
+                  alt="Personagem feminina de corpo inteiro"
+                  className="h-full w-auto object-contain max-h-64 sm:max-h-72 drop-shadow-xs"
                 />
               </div>
 
-              {/* Informações reais declaradas pela aluna */}
               <div className="space-y-3">
-                {/* IMC Calculado */}
                 {calculatedBmi !== null && (
                   <div className="p-3.5 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
@@ -1804,10 +1708,8 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                       <span className="font-bold text-[#292321] text-sm">{calculatedBmi}</span>
                     </div>
 
-                    {/* Escala Visual de IMC com ponteiro preciso */}
                     <div className="space-y-1 pt-1">
                       <div className="relative w-full h-2.5 rounded-full overflow-hidden bg-gradient-to-r from-blue-300 via-emerald-400 via-amber-400 to-rose-400">
-                        {/* Marcador */}
                         <div
                           className="absolute top-0 bottom-0 w-1.5 bg-[#292321] rounded-full shadow-xs"
                           style={{
@@ -1830,19 +1732,16 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                   </div>
                 )}
 
-                {/* Estilo de vida */}
                 <div className="p-3 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] text-xs flex justify-between">
                   <span className="text-[#827B77]">Estilo de vida:</span>
                   <span className="font-semibold text-[#292321]">{answers.dailyRoutine || "Não informado"}</span>
                 </div>
 
-                {/* Nível de atividade */}
                 <div className="p-3 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] text-xs flex justify-between">
                   <span className="text-[#827B77]">Nível de atividade:</span>
                   <span className="font-semibold text-[#292321]">{answers.activityLevel || "Não informado"}</span>
                 </div>
 
-                {/* Tipo de corpo */}
                 <div className="p-3 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] text-xs flex justify-between">
                   <span className="text-[#827B77]">Tipo de corpo:</span>
                   <span className="font-semibold text-[#292321]">{answers.bodyType || "Não informado"}</span>
@@ -1850,7 +1749,6 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
               </div>
             </div>
 
-            {/* Fechamento respeitoso sobre IMC */}
             {calculatedBmi !== null && (
               <p className="text-[11px] text-[#827B77] bg-[#FAF7F2] p-3 rounded-xl border border-[#EADBCE] leading-relaxed">
                 {getBmiCategory(calculatedBmi).description}
@@ -1871,37 +1769,32 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 20: RITMO DESEJADO */}
+        {/* ETAPA 20: RITMO */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 20 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="space-y-1">
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
-                Com que rapidez você deseja atingir seu objetivo?
-              </h2>
-              <p className="text-xs sm:text-sm text-[#827B77]">
-                Ajustaremos a experiência de acordo com suas preferências.
-              </p>
-            </div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+              Com que rapidez você deseja atingir seu objetivo?
+            </h2>
 
             <div className="space-y-3">
               {[
                 {
                   id: "lento",
                   title: "Lentamente e com calma",
-                  subtitle: "Foco total na adaptação suave, sem pressa",
+                  subtitle: "Foco na adaptação gradual e sem pressa",
                   icon: Leaf,
                 },
                 {
                   id: "moderado",
                   title: "Em um ritmo moderado",
-                  subtitle: "Equilíbrio constante entre desafio e descanso",
+                  subtitle: "Equilíbrio constante entre prática e descanso",
                   icon: Compass,
                 },
                 {
                   id: "rapido",
                   title: "O mais rápido possível",
-                  subtitle: "Dedicação máxima à consistência dos treinos",
+                  subtitle: "Dedicação máxima à frequência dos treinos",
                   icon: Zap,
                 },
               ].map((item) => {
@@ -1947,7 +1840,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
             </div>
 
             <p className="text-[11px] text-[#827B77] italic">
-              * Sua escolha expressa sua preferência pessoal de dedicação e não constitui garantia médica de velocidade de resultados.
+              * Sua escolha expressa sua preferência pessoal de dedicação, sem prometer velocidade ou resultados clínicos.
             </p>
 
             <div className="pt-2">
@@ -1965,9 +1858,9 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 22: PLANO DE BEM-ESTAR */}
+        {/* ETAPA 21: PLANO DE BEM-ESTAR */}
         {/* ------------------------------------------------------------ */}
-        {currentStep === 22 && (
+        {currentStep === 21 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
             <div className="space-y-1 text-center">
               <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
@@ -1978,7 +1871,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
               </p>
             </div>
 
-            {/* Marco de Acompanhamento de 2 meses */}
+            {/* Marco de Acompanhamento (2 meses exatos calculados a cada preenchimento) */}
             <div className="p-4 rounded-2xl bg-[#F7EEEE] border border-[#EBD6D5] space-y-1 text-center">
               <span className="text-[11px] uppercase tracking-wider font-bold text-[#B77D82] block">
                 Marco de Acompanhamento da Rotina
@@ -1987,7 +1880,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 {followUpDateStr}
               </p>
               <p className="text-[11px] text-[#827B77]">
-                Esta data é um marco de acompanhamento dos seus hábitos; não constitui promessa de data exata de conclusão.
+                Marco estimado para rever sua consistência e evolução nas práticas.
               </p>
             </div>
 
@@ -1998,39 +1891,35 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 <span className="text-[11px] text-[#827B77] italic">Ilustrativo</span>
               </div>
 
-              {/* Visual SVG limpo */}
               <div className="w-full h-32 flex items-center justify-center">
                 <svg viewBox="0 0 320 90" className="w-full h-full">
                   <defs>
-                    <linearGradient id="curveGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#B77D82" stopOpacity="0.4" />
+                    <linearGradient id="chartGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#B77D82" stopOpacity="0.3" />
                       <stop offset="100%" stopColor="#B77D82" stopOpacity="1" />
                     </linearGradient>
                   </defs>
-                  {/* Linha guia suave */}
                   <path
                     d="M 30,65 Q 160,55 290,25"
                     fill="none"
-                    stroke="url(#curveGradient)"
+                    stroke="url(#chartGradient)"
                     strokeWidth="3"
                     strokeDasharray="4 4"
                   />
-                  {/* Ponto inicial */}
                   <circle cx="30" cy="65" r="5" fill="#B77D82" />
                   <text x="30" y="85" fontSize="10" fill="#827B77" textAnchor="middle">
-                    {answers.currentWeightKg ? `${answers.currentWeightKg} kg (Hoje)` : "Início"}
+                    {answers.currentWeightKg ? `${answers.currentWeightKg} kg` : "Início"}
                   </text>
 
-                  {/* Ponto final objetivo */}
                   <circle cx="290" cy="25" r="6" fill="#B77D82" />
                   <text x="280" y="15" fontSize="10" fill="#B77D82" fontWeight="bold" textAnchor="middle">
-                    {answers.targetWeightKg ? `${answers.targetWeightKg} kg (Meta)` : "Meta"}
+                    {answers.targetWeightKg ? `${answers.targetWeightKg} kg` : "Meta"}
                   </text>
                 </svg>
               </div>
 
               <p className="text-[10px] text-[#827B77] text-center italic">
-                * Gráfico ilustrativo para apoio ao acompanhamento de metas pessoais.
+                Baseado nos dados de usuários que registram seu progresso no aplicativo.
               </p>
             </div>
 
@@ -2048,85 +1937,111 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 23: CRIAÇÃO DO PLANO (ANIMAÇÃO COM ACESSIBILIDADE) */}
+        {/* ETAPA 22: CRIANDO SEU PLANO (INDICADOR CIRCULAR COM %) */}
         {/* ------------------------------------------------------------ */}
-        {currentStep === 23 && (
+        {currentStep === 22 && (
           <div
             className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-8 text-center space-y-6"
             aria-live="polite"
             role="status"
           >
-            <div className="relative w-20 h-20 mx-auto">
-              <div className="w-full h-full rounded-full border-4 border-[#F3EAE3] border-t-[#B77D82] animate-spin" />
+            {/* Indicador circular de porcentagem */}
+            <div className="relative w-32 h-32 mx-auto flex items-center justify-center">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="42"
+                  fill="none"
+                  stroke="#F3EAE3"
+                  strokeWidth="8"
+                />
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="42"
+                  fill="none"
+                  stroke="#B77D82"
+                  strokeWidth="8"
+                  strokeDasharray="264"
+                  strokeDashoffset={264 - (264 * creationProgress) / 100}
+                  strokeLinecap="round"
+                  className="transition-all duration-500 ease-out"
+                />
+              </svg>
               <div className="absolute inset-0 flex items-center justify-center">
-                <Sparkles className="w-8 h-8 text-[#B77D82] animate-pulse" />
+                <span className="text-3xl font-serif font-bold text-[#292321]">
+                  {creationProgress}%
+                </span>
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1">
               <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
                 Criando seu plano
               </h2>
-              <p className="text-xs sm:text-sm text-[#827B77] min-h-[2.5rem]">
-                {creationStepText}
-              </p>
             </div>
 
-            <div className="w-full h-2.5 bg-[#F3EAE3] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#B77D82] rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${creationProgress}%` }}
-              />
+            {/* Três mensagens de adaptação honesta */}
+            <div className="space-y-3 max-w-sm mx-auto text-left pt-2">
+              <div className={`flex items-center gap-3 text-xs transition ${creationPhaseIndex >= 0 ? "text-[#292321] font-semibold" : "text-[#827B77]/60"}`}>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 ${creationPhaseIndex >= 0 ? "bg-[#B77D82] text-white" : "bg-[#F3EAE3] text-[#827B77]"}`}>
+                  ✓
+                </div>
+                <span>Analisando seu perfil</span>
+              </div>
+
+              <div className={`flex items-center gap-3 text-xs transition ${creationPhaseIndex >= 1 ? "text-[#292321] font-semibold" : "text-[#827B77]/60"}`}>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 ${creationPhaseIndex >= 1 ? "bg-[#B77D82] text-white" : "bg-[#F3EAE3] text-[#827B77]"}`}>
+                  ✓
+                </div>
+                <span>Adaptando o plano à sua rotina</span>
+              </div>
+
+              <div className={`flex items-center gap-3 text-xs transition ${creationPhaseIndex >= 2 ? "text-[#292321] font-semibold" : "text-[#827B77]/60"}`}>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 ${creationPhaseIndex >= 2 ? "bg-[#B77D82] text-white" : "bg-[#F3EAE3] text-[#827B77]"}`}>
+                  ✓
+                </div>
+                <span>Personalizando sua experiência com base nas respostas</span>
+              </div>
             </div>
           </div>
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 24: PLANO PERSONALIZADO PRONTO */}
+        {/* ETAPA 23: PLANO PRONTO (RECORTE TRANSPARENTE) */}
         {/* ------------------------------------------------------------ */}
-        {currentStep === 24 && (
+        {currentStep === 23 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
             <div className="text-center space-y-1">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#F7EEEE] text-[#B77D82] mb-1">
-                <Sparkles className="w-6 h-6" />
-              </div>
               <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
                 {answers.name ? `${answers.name}, seu plano personalizado está pronto!` : "Seu plano personalizado está pronto!"}
               </h1>
-              <p className="text-xs sm:text-sm text-[#827B77]">
-                Construído especialmente para seu objetivo de <strong>{answers.mainGoal || "saúde e bem-estar"}</strong>.
-              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-              {/* Personagem anexada de corpo inteiro */}
-              <div className="rounded-2xl overflow-hidden border border-[#EADBCE] bg-[#FAF7F2] flex items-center justify-center p-2 max-h-72 sm:max-h-80">
+              <div className="flex items-center justify-center max-h-72 sm:max-h-80">
                 <img
-                  src="/images/quiz/woman-standing.webp"
-                  alt="Ilustração da personagem aluna da Vitta Pilates"
-                  className="h-full w-auto object-contain max-h-64 sm:max-h-72"
+                  src="/images/quiz/woman-standing-transparent.png"
+                  alt="Personagem aluna da Vitta Pilates"
+                  className="h-full w-auto object-contain max-h-64 sm:max-h-72 drop-shadow-xs"
                 />
               </div>
 
-              {/* Dados do plano estruturado */}
               <div className="space-y-3">
                 <div className="p-3.5 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] text-xs space-y-1">
                   <span className="text-[#827B77] block text-[11px]">Objetivo Principal:</span>
                   <p className="font-semibold text-[#292321] text-sm">{answers.mainGoal || "Equilíbrio e Saúde"}</p>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] text-xs space-y-1">
-                  <span className="text-[#827B77] block text-[11px]">Marco de Acompanhamento:</span>
-                  <p className="font-semibold text-[#292321] text-sm">{followUpDateStr}</p>
-                </div>
-
-                {/* Gráfico ilustrativo construído com dados respondidos */}
-                <div className="p-3.5 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] text-xs space-y-1">
+                {/* Gráfico ilustrativo construído com as respostas da pessoa */}
+                <div className="p-3.5 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] text-xs space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-[#827B77] text-[11px]">Metas em kg:</span>
-                    <span className="text-[10px] text-[#827B77] italic">Ilustrativo</span>
+                    <span className="text-[#827B77] text-[11px] font-semibold">Trajetória Ilustrativa:</span>
+                    <span className="text-[10px] text-[#827B77] italic">Acompanhamento</span>
                   </div>
-                  <div className="flex items-center justify-between font-semibold text-[#292321]">
+
+                  <div className="flex items-center justify-between font-semibold text-[#292321] pt-1">
                     <span>Partida: {answers.currentWeightKg ? `${answers.currentWeightKg} kg` : "--"}</span>
                     <span>→</span>
                     <span className="text-[#B77D82]">Alvo: {answers.targetWeightKg ? `${answers.targetWeightKg} kg` : "--"}</span>
@@ -2138,7 +2053,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
             <div className="pt-2">
               <button
                 type="button"
-                onClick={() => setCurrentStep(25)}
+                onClick={() => setCurrentStep(24)}
                 className="w-full py-4 px-6 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-semibold text-sm tracking-wide shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>VER MEU PLANO E ACESSAR</span>
@@ -2149,39 +2064,46 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 25: OFERTA FINAL E CHECKOUT */}
+        {/* ETAPA 24: PÁGINA DE VENDAS FINAL (COMPLETA) */}
         {/* ------------------------------------------------------------ */}
-        {currentStep === 25 && (
-          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
-            <div className="text-center space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82]">
-                Acesso Imediato
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
-                Comece sua prática hoje
-              </h2>
-              <p className="text-xs sm:text-sm text-[#827B77]">
-                Tenha acesso ao método Vitta Pilates e ao seu plano personalizado.
+        {currentStep === 24 && (
+          <div className="space-y-6 animate-fade-in">
+            {/* Título Principal */}
+            <div className="text-center space-y-2">
+              <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321] leading-tight">
+                Comece a praticar seu plano personalizado hoje
+              </h1>
+              <p className="text-xs sm:text-sm text-[#827B77] max-w-md mx-auto">
+                Acesso imediato às suas aulas recomendadas na plataforma Vitta Pilates pelo celular ou computador.
               </p>
             </div>
 
-            {/* Cartão de Preço Real Oficial */}
-            <div className="p-6 rounded-3xl bg-[#FAF7F2] border border-[#EADBCE] text-center space-y-4">
+            {/* Imagem de Destaque: Mockup real dos 3 smartphones com o app Vitta Pilates */}
+            <div className="w-full rounded-3xl overflow-hidden border border-[#EADBCE] bg-[#FAF7F2] shadow-sm">
+              <img
+                src="/images/quiz/vitta-phones-mockup.webp"
+                alt="Experiência da aluna Vitta Pilates em celular"
+                className="w-full h-auto object-cover"
+              />
+            </div>
+
+            {/* Seção 1: Card de Oferta Oficial */}
+            <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 text-center space-y-5">
               <div className="space-y-1">
                 <span className="text-xs font-semibold text-[#827B77] uppercase tracking-wider block">
-                  Plano Mensal Vitta Pilates
+                  Acesso Completo ao Plano Personalizado
                 </span>
                 <div className="flex items-baseline justify-center gap-1">
                   <span className="text-sm font-bold text-[#827B77]">R$</span>
                   <span className="text-4xl sm:text-5xl font-serif font-bold text-[#B77D82]">
-                    49,90
+                    47,90
                   </span>
                   <span className="text-xs text-[#827B77]">/mês</span>
                 </div>
               </div>
 
-              {/* Benefícios permitidos: Garantia de 7 dias e Atualizações mensais */}
-              <div className="space-y-2.5 pt-2 text-left max-w-xs mx-auto border-t border-[#EADBCE] pt-4">
+              {/* Benefícios Permitidos */}
+              <div className="space-y-2.5 max-w-sm mx-auto text-left pt-2 border-t border-[#EADBCE] pt-4">
                 <div className="flex items-center gap-2.5 text-xs text-[#292321]">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>
@@ -2191,26 +2113,115 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                 <div className="flex items-center gap-2.5 text-xs text-[#292321]">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>
-                    <strong>Atualizações mensais</strong> de conteúdo
+                    <strong>Atualizações mensais</strong> de conteúdo e novas aulas
+                  </span>
+                </div>
+                <div className="flex items-center gap-2.5 text-xs text-[#292321]">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    Acesso completo no celular, tablet e computador
                   </span>
                 </div>
               </div>
+
+              {/* Botão de Chamada para Ação */}
+              <div className="pt-2">
+                {checkoutUrl ? (
+                  <a
+                    href={`${checkoutUrl}${checkoutUrl.includes("?") ? "&" : "?"}sck=${encodeURIComponent(sessionId)}${
+                      answers.name ? `&name=${encodeURIComponent(answers.name)}` : ""
+                    }`}
+                    className="w-full py-4 px-6 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-semibold text-sm tracking-wide shadow-sm hover:shadow transition flex items-center justify-center gap-2 cursor-pointer text-center"
+                  >
+                    <span>OBTER MEU PLANO PERSONALIZADO</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </a>
+                ) : (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      disabled
+                      className="w-full py-4 px-6 rounded-full bg-[#B77D82]/50 text-white font-semibold text-sm tracking-wide shadow-sm cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <Lock className="w-4 h-4" />
+                      <span>OBTER MEU PLANO PERSONALIZADO</span>
+                    </button>
+                    <p className="text-[11px] text-[#827B77]">
+                      O link de checkout está em configuração pela administração da Vitta Pilates.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Botão de Chamada para Ação / Checkout */}
-            <div className="pt-2 space-y-2">
-              {checkoutUrl ? (
-                <a
-                  href={`${checkoutUrl}${checkoutUrl.includes("?") ? "&" : "?"}sck=${encodeURIComponent(sessionId)}${
-                    answers.name ? `&name=${encodeURIComponent(answers.name)}` : ""
-                  }`}
-                  className="w-full py-4 px-6 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-semibold text-sm tracking-wide shadow-sm hover:shadow transition flex items-center justify-center gap-2 cursor-pointer text-center"
-                >
-                  <Lock className="w-4 h-4" />
-                  <span>OBTER MEU PLANO PERSONALIZADO</span>
-                </a>
-              ) : (
-                <div className="space-y-2">
+            {/* Seção 2: Card de Garantia de 7 Dias */}
+            <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 text-center space-y-4">
+              <div className="w-16 h-16 mx-auto rounded-full bg-[#F7EEEE] border border-[#EBD6D5] flex items-center justify-center">
+                <ShieldCheck className="w-8 h-8 text-[#B77D82]" />
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-xl font-serif font-bold text-[#292321]">
+                  Garantia Incondicional de 7 Dias
+                </h3>
+                <p className="text-xs sm:text-sm text-[#827B77] max-w-md mx-auto leading-relaxed">
+                  Você tem 7 dias inteiros para experimentar as aulas e praticar seu plano no seu ritmo. Se não se adaptar, devolvemos 100% do seu dinheiro, sem perguntas e sem complicações.
+                </p>
+              </div>
+            </div>
+
+            {/* Seção 3: Perguntas Frequentes (FAQ Expansível) */}
+            <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-4">
+              <h3 className="text-xl font-serif font-bold text-[#292321] text-center">
+                Perguntas Frequentes
+              </h3>
+
+              <div className="space-y-2.5 pt-1">
+                {faqs.map((faq, idx) => {
+                  const isOpen = openFaqIndex === idx;
+                  return (
+                    <div
+                      key={idx}
+                      className="rounded-2xl border border-[#EADBCE] bg-[#FAF7F2] overflow-hidden transition"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
+                        className="w-full p-4 text-left flex items-center justify-between gap-3 cursor-pointer"
+                      >
+                        <span className="text-xs sm:text-sm font-semibold text-[#292321]">
+                          {faq.q}
+                        </span>
+                        {isOpen ? (
+                          <ChevronUp className="w-4 h-4 text-[#B77D82] shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-[#827B77] shrink-0" />
+                        )}
+                      </button>
+
+                      {isOpen && (
+                        <div className="px-4 pb-4 pt-1 text-xs text-[#827B77] leading-relaxed border-t border-[#EADBCE]/50">
+                          {faq.a}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Botão de Chamada para Ação ao Final do FAQ */}
+              <div className="pt-4 space-y-2">
+                {checkoutUrl ? (
+                  <a
+                    href={`${checkoutUrl}${checkoutUrl.includes("?") ? "&" : "?"}sck=${encodeURIComponent(sessionId)}${
+                      answers.name ? `&name=${encodeURIComponent(answers.name)}` : ""
+                    }`}
+                    className="w-full py-4 px-6 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-semibold text-sm tracking-wide shadow-sm hover:shadow transition flex items-center justify-center gap-2 cursor-pointer text-center"
+                  >
+                    <span>OBTER MEU PLANO PERSONALIZADO</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </a>
+                ) : (
                   <button
                     type="button"
                     disabled
@@ -2219,18 +2230,13 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                     <Lock className="w-4 h-4" />
                     <span>OBTER MEU PLANO PERSONALIZADO</span>
                   </button>
-                  <p className="text-[11px] text-center text-[#827B77]">
-                    O link de checkout está em configuração pela administração da Vitta Pilates.
-                  </p>
-                </div>
-              )}
+                )}
 
-              <Link
-                href="/login"
-                className="block text-center py-2 text-xs text-[#827B77] hover:text-[#292321] transition"
-              >
-                Já possui uma conta? Fazer login
-              </Link>
+                <div className="flex items-center justify-center gap-1.5 text-[11px] text-[#827B77]">
+                  <Lock className="w-3.5 h-3.5 text-[#827B77]" />
+                  <span>Ambiente seguro e protegido</span>
+                </div>
+              </div>
             </div>
           </div>
         )}

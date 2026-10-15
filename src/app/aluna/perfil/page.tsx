@@ -153,6 +153,55 @@ export default function StudentProfilePage() {
         )}
       </div>
 
+      {/* Dados do Quiz e Plano Personalizado (se existirem) */}
+      {currentUser?.customPlan && (
+        <section aria-labelledby="custom-plan-heading" className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] p-6 shadow-2xs space-y-4">
+          <div className="flex items-center gap-2.5">
+            <Calendar className="w-5 h-5 text-[#B77D82]" />
+            <h2 id="custom-plan-heading" className="font-serif font-bold text-base text-[#292321]">
+              Meu Plano e Metas Pessoais
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="p-3 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE]">
+              <span className="text-[11px] text-[#827B77] block">Objetivo Principal:</span>
+              <p className="font-semibold text-[#292321] text-xs sm:text-sm capitalize mt-0.5">
+                {currentUser.customPlan.mainGoal || "Não informado"}
+              </p>
+            </div>
+
+            {currentUser.customPlan.birthDate && (
+              <div className="p-3 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE]">
+                <span className="text-[11px] text-[#827B77] block">Data de Nascimento:</span>
+                <p className="font-semibold text-[#292321] text-xs sm:text-sm mt-0.5">
+                  {new Date(currentUser.customPlan.birthDate).toLocaleDateString("pt-BR")}
+                </p>
+              </div>
+            )}
+
+            {currentUser.customPlan.currentWeight && (
+              <div className="p-3 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE]">
+                <span className="text-[11px] text-[#827B77] block">Peso Informado:</span>
+                <p className="font-semibold text-[#292321] text-xs sm:text-sm mt-0.5">
+                  {currentUser.customPlan.currentWeight} kg
+                  {currentUser.customPlan.targetWeight ? ` (Meta: ${currentUser.customPlan.targetWeight} kg)` : ""}
+                </p>
+              </div>
+            )}
+
+            {currentUser.customPlan.bmi && (
+              <div className="p-3 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE]">
+                <span className="text-[11px] text-[#827B77] block">IMC Registrado:</span>
+                <p className="font-semibold text-[#292321] text-xs sm:text-sm mt-0.5">
+                  {currentUser.customPlan.bmi}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Informações da Assinatura (Item 11) */}
       <section aria-labelledby="subscription-heading" className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] p-6 shadow-2xs space-y-4">
         <div className="flex items-center justify-between">

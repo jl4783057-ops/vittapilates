@@ -80,6 +80,78 @@ export async function POST(request: Request) {
         .eq("user_id", account.userId)
         .in("status", ["invited", "active", "expired"]);
 
+      // Associar respostas do quiz confirmadas para esta compra
+      try {
+        const quizSessionId =
+          data.sck ||
+          data.custom_id ||
+          data.tracking_id ||
+          (data.metadata && typeof data.metadata === "object" ? data.metadata.quiz_session_id : null);
+
+        let submission = null;
+
+        if (quizSessionId && typeof quizSessionId === "string") {
+          const { data: subById } = await admin
+            .from("quiz_submissions")
+            .select("id, answers, generated_plan")
+            .eq("id", quizSessionId)
+            .maybeSingle();
+          if (subById) submission = subById;
+        }
+
+        if (!submission && email) {
+          // Busca estrita por e-mail registrado na submissão
+          const { data: subByEmail } = await admin
+            .from("quiz_submissions")
+            .select("id, answers, generated_plan")
+            .contains("answers", { email })
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (subByEmail) submission = subByEmail;
+        }
+
+        if (submission) {
+          // 1. Vincular a submissão ao ID da usuária
+          await admin
+            .from("quiz_submissions")
+            .update({ user_id: account.userId })
+            .eq("id", submission.id);
+
+          // 2. Extrair dados essenciais do quiz para o perfil
+          const ans = submission.answers || {};
+          const plan = submission.generated_plan || {};
+
+          const profileUpdates: Record<string, unknown> = {
+            custom_plan: {
+              ...plan,
+              userName: ans.name || name,
+              birthDate: ans.birthDate || null,
+              mainGoal: ans.mainGoal || null,
+              currentWeight: ans.currentWeightKg || null,
+              targetWeight: ans.targetWeightKg || null,
+              heightCm: ans.heightCm || null,
+              bmi: ans.bmi || null,
+              bodyType: ans.bodyType || null,
+              desiredBodyShape: ans.desiredBodyShape || null,
+              targetArea: ans.targetArea || null,
+              quizSessionId: submission.id,
+            },
+          };
+
+          if (ans.name && typeof ans.name === "string" && ans.name.trim().length >= 2) {
+            profileUpdates.name = ans.name.trim();
+          }
+
+          await admin
+            .from("profiles")
+            .update(profileUpdates)
+            .eq("id", account.userId);
+        }
+      } catch (quizErr) {
+        console.warn("Aviso ao associar dados do quiz à compra aprovada:", quizErr);
+      }
+
       await admin.from("cakto_orders").update({ user_id: account.userId }).eq("id", `${event}:${orderId}`);
       return NextResponse.json({ ok: true, created: account.created });
     }

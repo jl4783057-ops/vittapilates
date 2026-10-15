@@ -30,6 +30,8 @@ import {
   Lock,
   Sparkles,
   Feather,
+  Scale,
+  TrendingDown,
 } from "lucide-react";
 
 interface QuizClientProps {
@@ -109,6 +111,7 @@ const INITIAL_ANSWERS: QuizAnswers = {
   badHabits: [],
   heightCm: undefined,
   currentWeightKg: undefined,
+  weightGoal: "",
   targetWeightKg: undefined,
   bmi: undefined,
   desiredPace: "",
@@ -152,11 +155,11 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     return INITIAL_ANSWERS;
   });
 
-  // 3. Etapa atual (23 etapas no total após remoção de 'O seu plano de bem-estar, tudo em um')
+  // 3. Etapa atual:
   // 1: Abertura, 2: Aniversário, 3: Prova social, 4: Objetivo, 5: Peso ideal anterior, 6: Motivacional,
   // 7: Área de atenção, 8: Tipo de corpo, 9: Formato desejado, 10: Rotina, 11: Energia, 12: Atividade,
-  // 13: Sono, 14: Hábitos, 15: Altura, 16: Peso atual, 17: Peso desejado, 18: Nome, 19: Resumo fitness,
-  // 20: Ritmo, 21: Criando plano, 22: Plano pronto, 23: Página de vendas final
+  // 13: Sono, 14: Hábitos, 15: Altura, 16: Peso atual, 17: Objetivo para o peso, 18: Peso desejado,
+  // 19: Nome, 20: Resumo fitness, 21: Ritmo, 22: Criando plano, 23: Plano pronto, 24: Página de vendas final
   const [currentStep, setCurrentStep] = useState<number>(() => {
     if (typeof window === "undefined") return 1;
     try {
@@ -165,8 +168,8 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         const saved = localStorage.getItem(`vitta_quiz_data_${sid}`);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (typeof parsed.step === "number" && parsed.step >= 1 && parsed.step <= 23) {
-            return parsed.step === 21 ? 20 : parsed.step;
+          if (typeof parsed.step === "number" && parsed.step >= 1 && parsed.step <= 24) {
+            return parsed.step === 22 ? 21 : parsed.step;
           }
         }
       }
@@ -205,6 +208,43 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
 
   // FAQ accordion aberto/fechado na página de vendas final
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+
+  // Pré-carregamento dinâmico da imagem da próxima etapa para transições sem atraso perceptível
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const nextStepImages: Record<number, string[]> = {
+      1: ["/images/quiz/pilates-women-social.webp"],
+      2: ["/images/quiz/pilates-women-social.webp"],
+      6: ["/images/quiz/woman-standing-transparent.webp"],
+      7: [
+        "/images/quiz/body-retangular-transparent.webp",
+        "/images/quiz/body-ampulheta-transparent.webp",
+        "/images/quiz/body-pera-transparent.webp",
+        "/images/quiz/body-circular-transparent.webp",
+      ],
+      8: [
+        "/images/quiz/goal-magro-transparent.webp",
+        "/images/quiz/goal-tonificado-transparent.webp",
+        "/images/quiz/goal-curvas-transparent.webp",
+        "/images/quiz/goal-tamanho-menor-transparent.webp",
+      ],
+      18: ["/images/quiz/woman-standing-transparent.webp"],
+      19: ["/images/quiz/woman-standing-transparent.webp"],
+      22: [
+        "/images/quiz/woman-standing-transparent.webp",
+        "/images/quiz/vitta-phones-mockup.webp",
+      ],
+      23: ["/images/quiz/vitta-phones-mockup.webp"],
+    };
+
+    const urlsToPreload = nextStepImages[currentStep];
+    if (urlsToPreload && urlsToPreload.length > 0) {
+      urlsToPreload.forEach((url) => {
+        const img = new Image();
+        img.src = url;
+      });
+    }
+  }, [currentStep]);
 
   // Salvar no localStorage isolado
   useEffect(() => {
@@ -255,13 +295,17 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     return answers.birthDate ? calculateAge(answers.birthDate) : null;
   }, [answers.birthDate]);
 
-  // Diferença de peso e percentual
+  // Diferença de peso e percentual (com suporte a manutenção de peso)
   const weightDiff = useMemo(() => {
-    if (!answers.currentWeightKg || !answers.targetWeightKg) return null;
+    if (!answers.currentWeightKg) return null;
+    if (answers.weightGoal === "manter") {
+      return { diff: 0, pct: 0, isMaintenance: true };
+    }
+    if (!answers.targetWeightKg) return null;
     const diff = Math.round((answers.targetWeightKg - answers.currentWeightKg) * 10) / 10;
     const pct = Math.round((Math.abs(diff) / answers.currentWeightKg) * 1000) / 10;
-    return { diff, pct };
-  }, [answers.currentWeightKg, answers.targetWeightKg]);
+    return { diff, pct, isMaintenance: false };
+  }, [answers.currentWeightKg, answers.targetWeightKg, answers.weightGoal]);
 
   // Data de acompanhamento de 2 meses calculada a cada renderização
   const followUpDateStr = useMemo(() => {
@@ -272,6 +316,8 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
   const syncWithServer = async () => {
     if (!sessionId) return;
     try {
+      const finalTargetWeight =
+        answers.weightGoal === "manter" ? answers.currentWeightKg : answers.targetWeightKg;
       await fetch("/api/quiz/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -279,6 +325,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
           sessionId,
           answers: {
             ...answers,
+            targetWeightKg: finalTargetWeight,
             bmi: calculatedBmi || undefined,
           },
           generatedPlan: {
@@ -286,7 +333,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
             mainGoal: answers.mainGoal,
             targetDate: followUpDateStr,
             currentWeight: answers.currentWeightKg,
-            targetWeight: answers.targetWeightKg,
+            targetWeight: finalTargetWeight,
             bmi: calculatedBmi,
           },
         }),
@@ -296,9 +343,9 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     }
   };
 
-  // Animação de criação de plano (Etapa 21)
+  // Animação de criação de plano (Etapa 22)
   const startPlanCreation = () => {
-    setCurrentStep(21);
+    setCurrentStep(22);
     setCreationProgress(8);
     setCreationPhaseIndex(0);
 
@@ -316,7 +363,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
       setCreationProgress(100);
       syncWithServer();
       setTimeout(() => {
-        setCurrentStep(22); // Plano pronto
+        setCurrentStep(23); // Plano pronto
       }, 500);
     }, 2200);
   };
@@ -357,18 +404,20 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
       case 16:
         return Boolean(answers.currentWeightKg && answers.currentWeightKg >= 30 && answers.currentWeightKg <= 250);
       case 17:
-        return Boolean(answers.targetWeightKg && answers.targetWeightKg >= 30 && answers.targetWeightKg <= 250);
+        return Boolean(answers.weightGoal);
       case 18:
-        return Boolean(answers.name && answers.name.trim().length >= 2);
+        return Boolean(answers.targetWeightKg && answers.targetWeightKg >= 30 && answers.targetWeightKg <= 250);
       case 19:
-        return true;
+        return Boolean(answers.name && answers.name.trim().length >= 2);
       case 20:
-        return Boolean(answers.desiredPace);
-      case 21:
-        return false;
-      case 22:
         return true;
+      case 21:
+        return Boolean(answers.desiredPace);
+      case 22:
+        return false;
       case 23:
+        return true;
+      case 24:
         return true;
       default:
         return true;
@@ -377,16 +426,29 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
 
   const handleNext = () => {
     if (!canAdvance) return;
-    if (currentStep === 20) {
-      startPlanCreation();
+    if (currentStep === 17) {
+      if (answers.weightGoal === "manter") {
+        setAnswers((prev) => ({ ...prev, targetWeightKg: prev.currentWeightKg }));
+        setCurrentStep(19); // Pula direto para o Nome (etapa 19)
+        return;
+      }
+      setCurrentStep(18); // Avança para o Peso Desejado (etapa 18)
       return;
     }
-    if (currentStep < 23) {
+    if (currentStep === 21) {
+      startPlanCreation(); // Inicia criação de plano (etapa 22)
+      return;
+    }
+    if (currentStep < 24) {
       setCurrentStep((prev) => prev + 1);
     }
   };
 
   const handleBack = () => {
+    if (currentStep === 19 && answers.weightGoal === "manter") {
+      setCurrentStep(17); // Volta direto para a pergunta de objetivo do peso
+      return;
+    }
     if (currentStep > 1) {
       setCurrentStep((prev) => prev - 1);
     } else {
@@ -441,7 +503,14 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
   };
 
   // Progresso relativo na barra horizontal (sem texto de etapa ou porcentagem no cabeçalho)
-  const progressRatio = Math.min(100, Math.round((currentStep / 23) * 100));
+  // Ramificação inteligente: para quem mantém o peso, o total de etapas é 23; para quem perde, 24.
+  const progressRatio = useMemo(() => {
+    if (answers.weightGoal === "manter") {
+      const effectiveStep = currentStep > 17 ? currentStep - 1 : currentStep;
+      return Math.min(100, Math.round((effectiveStep / 23) * 100));
+    }
+    return Math.min(100, Math.round((currentStep / 24) * 100));
+  }, [currentStep, answers.weightGoal]);
 
   // URL do checkout configurada (com link oficial da Cakto como valor garantido)
   const checkoutUrl =
@@ -479,7 +548,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
       {/* ============================================================ */}
       <header className="max-w-xl mx-auto w-full pt-1 pb-3 flex flex-col items-center">
         <div className="flex items-center justify-between w-full mb-3">
-          {currentStep > 1 && currentStep !== 21 ? (
+          {currentStep > 1 && currentStep !== 22 ? (
             <button
               type="button"
               onClick={handleBack}
@@ -512,7 +581,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         </div>
 
         {/* Barra horizontal de progresso simples (sem texto ou %) */}
-        {currentStep > 1 && currentStep !== 21 && currentStep !== 23 && (
+        {currentStep > 1 && currentStep !== 22 && currentStep !== 24 && (
           <div className="w-full h-1.5 bg-[#F3EAE3] rounded-full overflow-hidden">
             <div
               className="h-full bg-[#B77D82] rounded-full transition-all duration-300 ease-out"
@@ -527,7 +596,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
       {/* ============================================================ */}
       <main className="max-w-xl mx-auto w-full my-auto py-2 sm:py-4">
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 1: ABERTURA (ILUSTRAÇÃO PILATES TRANSPARENTE) */}
+        {/* ETAPA 1: ABERTURA (ILUSTRAÇÃO PILATES TRANSPARENTE AMPLIADA) */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 1 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 text-center space-y-6">
@@ -535,12 +604,16 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
               Vamos montar seu Plano Personalizado
             </h1>
 
-            {/* Ilustração horizontal de mulheres adultas praticando Pilates em PNG transparente */}
-            <div className="w-full max-w-md mx-auto flex items-center justify-center py-2">
+            {/* Ilustração horizontal de mulheres adultas praticando Pilates em WebP de alta qualidade com presença visual ampliada */}
+            <div className="w-full max-w-lg mx-auto flex items-center justify-center py-2 min-h-[220px] sm:min-h-[280px]">
               <img
-                src="/images/quiz/pilates-women-opening.png"
+                src="/images/quiz/pilates-women-opening.webp"
                 alt="Mulheres adultas praticando Pilates em movimento suave"
-                className="w-full h-auto object-contain max-h-56 sm:max-h-64 drop-shadow-xs"
+                width={860}
+                height={573}
+                fetchPriority="high"
+                decoding="async"
+                className="w-full h-auto object-contain max-h-64 sm:max-h-76 drop-shadow-sm transition-transform duration-300"
               />
             </div>
 
@@ -658,7 +731,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 3: PROVA SOCIAL (GRUPO DE MULHERES TRANSPARENTE) */}
+        {/* ETAPA 3: PROVA SOCIAL (GRUPO DE MULHERES AMPLIADO) */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 3 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 text-center space-y-6">
@@ -671,12 +744,15 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
               </p>
             </div>
 
-            {/* Ilustração de mulheres adultas em PNG com fundo transparente */}
-            <div className="w-full max-w-md mx-auto flex items-center justify-center py-2">
+            {/* Ilustração de mulheres adultas em WebP com escala expressiva igual à BetterMe */}
+            <div className="w-full max-w-lg mx-auto flex items-center justify-center py-2 min-h-[240px] sm:min-h-[300px]">
               <img
-                src="/images/quiz/pilates-women-social.png"
+                src="/images/quiz/pilates-women-social.webp"
                 alt="Grupo de mulheres reais praticando Vitta Pilates"
-                className="w-full h-auto object-contain max-h-60 sm:max-h-72 drop-shadow-xs"
+                width={736}
+                height={552}
+                decoding="async"
+                className="w-full h-auto object-contain max-h-68 sm:max-h-80 drop-shadow-sm transition-transform duration-300"
               />
             </div>
 
@@ -870,21 +946,24 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 7: ÁREA QUE PRECISA DE ATENÇÃO (RECORTE TRANSPARENTE) */}
+        {/* ETAPA 7: ÁREA QUE PRECISA DE ATENÇÃO (LADO A LADO AMPLIADO) */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 7 && (
-          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
+          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-5 sm:p-8 space-y-5">
             <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
               Qual área precisa de mais atenção?
             </h2>
 
-            {/* Personagem com transparência real lado a lado com as opções inclusive no celular */}
+            {/* Personagem com presença visual ampliada proporcional à referência BetterMe */}
             <div className="grid grid-cols-12 gap-3 sm:gap-6 items-center">
-              <div className="col-span-5 flex items-center justify-center h-full max-h-72 sm:max-h-80">
+              <div className="col-span-5 flex items-center justify-center h-full min-h-[260px] sm:min-h-[340px]">
                 <img
-                  src="/images/quiz/woman-standing-transparent.png"
+                  src="/images/quiz/woman-standing-transparent.webp"
                   alt="Personagem feminina de corpo inteiro"
-                  className="w-full h-auto max-h-60 sm:max-h-72 object-contain drop-shadow-xs"
+                  width={245}
+                  height={560}
+                  decoding="async"
+                  className="w-full h-auto max-h-72 sm:max-h-88 object-contain drop-shadow-sm transition-transform duration-300"
                 />
               </div>
 
@@ -933,20 +1012,20 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 8: TIPO DE CORPO ATUAL (TRANSPARÊNCIA REAL) */}
+        {/* ETAPA 8: TIPO DE CORPO ATUAL (WEBP AMPLIADO) */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 8 && (
-          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
+          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-5 sm:p-8 space-y-6">
             <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
               Qual é o seu tipo de corpo?
             </h2>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 gap-3.5 sm:gap-5">
               {[
-                { id: "Retangular", name: "Retangular", img: "/images/quiz/body-retangular-transparent.png" },
-                { id: "Ampulheta", name: "Ampulheta", img: "/images/quiz/body-ampulheta-transparent.png" },
-                { id: "Pêra", name: "Pêra", img: "/images/quiz/body-pera-transparent.png" },
-                { id: "Circular", name: "Circular", img: "/images/quiz/body-circular-transparent.png" },
+                { id: "Retangular", name: "Retangular", img: "/images/quiz/body-retangular-transparent.webp" },
+                { id: "Ampulheta", name: "Ampulheta", img: "/images/quiz/body-ampulheta-transparent.webp" },
+                { id: "Pêra", name: "Pêra", img: "/images/quiz/body-pera-transparent.webp" },
+                { id: "Circular", name: "Circular", img: "/images/quiz/body-circular-transparent.webp" },
               ].map((bt) => {
                 const isSelected = answers.bodyType === bt.name;
                 return (
@@ -954,17 +1033,20 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                     key={bt.id}
                     type="button"
                     onClick={() => setAnswers((prev) => ({ ...prev, bodyType: bt.name }))}
-                    className={`p-3 rounded-2xl border text-center transition flex flex-col items-center justify-between cursor-pointer ${
+                    className={`p-3.5 sm:p-4 rounded-2xl border text-center transition flex flex-col items-center justify-between cursor-pointer ${
                       isSelected
                         ? "bg-[#F7EEEE] border-[#B77D82] shadow-sm ring-2 ring-[#B77D82]/40"
                         : "bg-[#FFFFFF] border-[#EADBCE] hover:bg-[#FAF7F2] hover:border-[#B77D82]/50"
                     }`}
                   >
-                    <div className="w-full aspect-[3/4] max-h-44 flex items-center justify-center mb-1">
+                    <div className="w-full aspect-[3/4] max-h-52 flex items-center justify-center mb-1.5">
                       <img
                         src={bt.img}
                         alt={`Tipo de corpo ${bt.name}`}
-                        className="w-full h-full object-contain drop-shadow-2xs"
+                        width={245}
+                        height={326}
+                        decoding="async"
+                        className="w-full h-full object-contain drop-shadow-xs transition-transform duration-200"
                       />
                     </div>
                     <span className={`text-xs sm:text-sm font-semibold ${isSelected ? "text-[#B77D82]" : "text-[#292321]"}`}>
@@ -990,20 +1072,20 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 9: FORMATO DESEJADO (TRANSPARÊNCIA REAL) */}
+        {/* ETAPA 9: FORMATO DESEJADO (WEBP AMPLIADO) */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 9 && (
-          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
+          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-5 sm:p-8 space-y-6">
             <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
               Qual é o formato de corpo que você deseja alcançar?
             </h2>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 gap-3.5 sm:gap-5">
               {[
-                { id: "Magro", name: "Magro", img: "/images/quiz/goal-magro-transparent.png" },
-                { id: "Tonificado", name: "Tonificado", img: "/images/quiz/goal-tonificado-transparent.png" },
-                { id: "Com curvas", name: "Com curvas", img: "/images/quiz/goal-curvas-transparent.png" },
-                { id: "Um tamanho menor", name: "Um tamanho menor", img: "/images/quiz/goal-tamanho-menor-transparent.png" },
+                { id: "Magro", name: "Magro", img: "/images/quiz/goal-magro-transparent.webp" },
+                { id: "Tonificado", name: "Tonificado", img: "/images/quiz/goal-tonificado-transparent.webp" },
+                { id: "Com curvas", name: "Com curvas", img: "/images/quiz/goal-curvas-transparent.webp" },
+                { id: "Um tamanho menor", name: "Um tamanho menor", img: "/images/quiz/goal-tamanho-menor-transparent.webp" },
               ].map((gt) => {
                 const isSelected = answers.desiredBodyShape === gt.name;
                 return (
@@ -1011,17 +1093,20 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                     key={gt.id}
                     type="button"
                     onClick={() => setAnswers((prev) => ({ ...prev, desiredBodyShape: gt.name }))}
-                    className={`p-3 rounded-2xl border text-center transition flex flex-col items-center justify-between cursor-pointer ${
+                    className={`p-3.5 sm:p-4 rounded-2xl border text-center transition flex flex-col items-center justify-between cursor-pointer ${
                       isSelected
                         ? "bg-[#F7EEEE] border-[#B77D82] shadow-sm ring-2 ring-[#B77D82]/40"
                         : "bg-[#FFFFFF] border-[#EADBCE] hover:bg-[#FAF7F2] hover:border-[#B77D82]/50"
                     }`}
                   >
-                    <div className="w-full aspect-[3/4] max-h-44 flex items-center justify-center mb-1">
+                    <div className="w-full aspect-[3/4] max-h-52 flex items-center justify-center mb-1.5">
                       <img
                         src={gt.img}
                         alt={`Formato desejado ${gt.name}`}
-                        className="w-full h-full object-contain drop-shadow-2xs"
+                        width={245}
+                        height={326}
+                        decoding="async"
+                        className="w-full h-full object-contain drop-shadow-xs transition-transform duration-200"
                       />
                     </div>
                     <span className={`text-xs sm:text-sm font-semibold ${isSelected ? "text-[#B77D82]" : "text-[#292321]"}`}>
@@ -1535,9 +1620,93 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 17: PESO DESEJADO */}
+        {/* ETAPA 17: NOVO - QUAL É O SEU OBJETIVO PARA O SEU PESO? */}
         {/* ------------------------------------------------------------ */}
         {currentStep === 17 && (
+          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
+            <div className="space-y-1">
+              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
+                Qual é o seu objetivo para o seu peso?
+              </h2>
+              <p className="text-xs sm:text-sm text-[#827B77]">
+                Vamos adaptar seu plano ao que você deseja alcançar.
+              </p>
+            </div>
+
+            <div className="space-y-3.5">
+              {[
+                {
+                  id: "manter",
+                  title: "Quero manter meu peso atual",
+                  subtitle: "Quero cuidar do meu bem-estar e manter meu peso como está.",
+                  icon: Scale,
+                },
+                {
+                  id: "perder",
+                  title: "Quero perder peso",
+                  subtitle: "Quero definir um peso desejado e avançar no meu ritmo.",
+                  icon: TrendingDown,
+                },
+              ].map((opt) => {
+                const isSelected = answers.weightGoal === opt.id;
+                const IconComp = opt.icon;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setAnswers((prev) => ({ ...prev, weightGoal: opt.id }))}
+                    className={`w-full p-4.5 rounded-2xl border text-left transition flex items-center justify-between gap-3.5 cursor-pointer ${
+                      isSelected
+                        ? "bg-[#F7EEEE] border-[#B77D82] shadow-xs ring-1 ring-[#B77D82]"
+                        : "bg-[#FFFFFF] border-[#EADBCE] hover:bg-[#FAF7F2] hover:border-[#B77D82]/50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3.5">
+                      <div
+                        className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition ${
+                          isSelected ? "bg-[#B77D82] text-white" : "bg-[#F3EAE3] text-[#B77D82]"
+                        }`}
+                      >
+                        <IconComp className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className={`text-sm font-semibold ${isSelected ? "text-[#B77D82]" : "text-[#292321]"}`}>
+                          {opt.title}
+                        </p>
+                        <p className="text-xs text-[#827B77] leading-relaxed">{opt.subtitle}</p>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                        isSelected ? "border-[#B77D82] bg-[#B77D82] text-white" : "border-[#EADBCE]"
+                      }`}
+                    >
+                      {isSelected && <CheckCircle2 className="w-4 h-4 fill-white text-[#B77D82]" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                disabled={!canAdvance}
+                onClick={handleNext}
+                className="w-full py-4 px-6 rounded-full bg-[#B77D82] hover:bg-[#A3676C] disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm tracking-wide shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>Próximo</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------ */}
+        {/* ETAPA 18: PESO DESEJADO (EXIBIDO SOMENTE SE "QUERO PERDER PESO") */}
+        {/* ------------------------------------------------------------ */}
+        {currentStep === 18 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
             <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
               Qual é o seu objetivo de peso?
@@ -1630,9 +1799,9 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 18: NOME */}
+        {/* ETAPA 19: NOME */}
         {/* ------------------------------------------------------------ */}
-        {currentStep === 18 && (
+        {currentStep === 19 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
             <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
               Qual é o seu nome?
@@ -1664,21 +1833,24 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 19: RESUMO DO NÍVEL FITNESS (RECORTE TRANSPARENTE) */}
+        {/* ETAPA 20: RESUMO DO NÍVEL FITNESS (LADO A LADO AMPLIADO) */}
         {/* ------------------------------------------------------------ */}
-        {currentStep === 19 && (
-          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
+        {currentStep === 20 && (
+          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-5 sm:p-8 space-y-6">
             <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321] text-center">
               Resumo do seu nível fitness
             </h2>
 
             {/* Personagem com transparência real lado a lado com informações no celular e computador */}
             <div className="grid grid-cols-12 gap-3 sm:gap-6 items-center">
-              <div className="col-span-5 flex items-center justify-center max-h-72 sm:max-h-80">
+              <div className="col-span-5 flex items-center justify-center h-full min-h-[260px] sm:min-h-[340px]">
                 <img
-                  src="/images/quiz/woman-standing-transparent.png"
+                  src="/images/quiz/woman-standing-transparent.webp"
                   alt="Personagem feminina de corpo inteiro"
-                  className="w-full h-auto max-h-60 sm:max-h-72 object-contain drop-shadow-xs"
+                  width={245}
+                  height={560}
+                  decoding="async"
+                  className="w-full h-auto max-h-72 sm:max-h-88 object-contain drop-shadow-sm transition-transform duration-300"
                 />
               </div>
 
@@ -1751,9 +1923,9 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 20: RITMO */}
+        {/* ETAPA 21: RITMO */}
         {/* ------------------------------------------------------------ */}
-        {currentStep === 20 && (
+        {currentStep === 21 && (
           <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
             <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
               Com que rapidez você deseja atingir seu objetivo?
@@ -1840,9 +2012,9 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 21: CRIANDO SEU PLANO (INDICADOR CIRCULAR COM %) */}
+        {/* ETAPA 22: CRIANDO SEU PLANO (INDICADOR CIRCULAR COM %) */}
         {/* ------------------------------------------------------------ */}
-        {currentStep === 21 && (
+        {currentStep === 22 && (
           <div
             className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-8 text-center space-y-6"
             aria-live="polite"
@@ -1912,10 +2084,10 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 22: PLANO PRONTO (RECORTE TRANSPARENTE) */}
+        {/* ETAPA 23: PLANO PRONTO (LADO A LADO AMPLIADO) */}
         {/* ------------------------------------------------------------ */}
-        {currentStep === 22 && (
-          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-6 sm:p-8 space-y-6">
+        {currentStep === 23 && (
+          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.05)] p-5 sm:p-8 space-y-6">
             <div className="text-center space-y-1">
               <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
                 {answers.name ? `${answers.name}, seu plano personalizado está pronto!` : "Seu plano personalizado está pronto!"}
@@ -1924,11 +2096,14 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
 
             {/* Personagem aluna da Vitta Pilates lado a lado no celular e computador */}
             <div className="grid grid-cols-12 gap-3 sm:gap-6 items-center">
-              <div className="col-span-5 flex items-center justify-center max-h-72 sm:max-h-80">
+              <div className="col-span-5 flex items-center justify-center h-full min-h-[260px] sm:min-h-[340px]">
                 <img
-                  src="/images/quiz/woman-standing-transparent.png"
+                  src="/images/quiz/woman-standing-transparent.webp"
                   alt="Personagem aluna da Vitta Pilates"
-                  className="w-full h-auto max-h-60 sm:max-h-72 object-contain drop-shadow-xs"
+                  width={245}
+                  height={560}
+                  decoding="async"
+                  className="w-full h-auto max-h-72 sm:max-h-88 object-contain drop-shadow-sm transition-transform duration-300"
                 />
               </div>
 
@@ -1938,17 +2113,23 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
                   <p className="font-semibold text-[#292321] text-xs sm:text-sm">{answers.mainGoal || "Equilíbrio e Saúde"}</p>
                 </div>
 
-                {/* Gráfico ilustrativo construído com as respostas da pessoa */}
+                {/* Trajetória ilustrativa adaptada para Manter ou Perder peso */}
                 <div className="p-3 sm:p-3.5 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] text-xs space-y-1.5 sm:space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-[#827B77] text-[10px] sm:text-[11px] font-semibold">Trajetória Ilustrativa:</span>
-                    <span className="text-[9px] sm:text-[10px] text-[#827B77] italic">Acompanhamento</span>
+                    <span className="text-[9px] sm:text-[10px] text-[#827B77] italic">
+                      {answers.weightGoal === "manter" ? "Manutenção" : "Acompanhamento"}
+                    </span>
                   </div>
 
                   <div className="flex items-center justify-between font-semibold text-[#292321] pt-1 text-[11px] sm:text-xs">
                     <span>Partida: {answers.currentWeightKg ? `${answers.currentWeightKg} kg` : "--"}</span>
                     <span>→</span>
-                    <span className="text-[#B77D82]">Alvo: {answers.targetWeightKg ? `${answers.targetWeightKg} kg` : "--"}</span>
+                    <span className="text-[#B77D82]">
+                      {answers.weightGoal === "manter"
+                        ? `Alvo: ${answers.currentWeightKg || "--"} kg (Manutenção)`
+                        : `Alvo: ${answers.targetWeightKg ? `${answers.targetWeightKg} kg` : "--"}`}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1957,7 +2138,7 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
             <div className="pt-2">
               <button
                 type="button"
-                onClick={() => setCurrentStep(23)}
+                onClick={() => setCurrentStep(24)}
                 className="w-full py-4 px-6 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-semibold text-sm tracking-wide shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>VER MEU PLANO E ACESSAR</span>
@@ -1968,9 +2149,9 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
         )}
 
         {/* ------------------------------------------------------------ */}
-        {/* ETAPA 23: PÁGINA DE VENDAS FINAL (COMPLETA) */}
+        {/* ETAPA 24: PÁGINA DE VENDAS FINAL (COMPLETA) */}
         {/* ------------------------------------------------------------ */}
-        {currentStep === 23 && (
+        {currentStep === 24 && (
           <div className="space-y-6 animate-fade-in">
             {/* Título Principal */}
             <div className="text-center space-y-2">

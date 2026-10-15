@@ -110,6 +110,7 @@ export interface QuizAnswers {
   badHabits?: string[];
   heightCm?: number;
   currentWeightKg?: number;
+  weightGoal?: string;
   targetWeightKg?: number;
   bmi?: number;
   desiredPace?: string;

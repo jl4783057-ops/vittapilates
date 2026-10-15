@@ -1,9 +1,7 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { useApp } from "@/lib/store/context";
+import React, { useEffect, useState, useCallback } from "react";
 import {
-  AlertCircle,
   Calendar,
   CreditCard,
   DollarSign,
@@ -15,9 +13,11 @@ import {
   Users,
   CheckCircle2,
   HelpCircle,
-  ArrowRight,
   Database,
   Webhook,
+  Gift,
+  ShieldCheck,
+  AlertCircle,
 } from "lucide-react";
 
 type TimeFilter = "7d" | "30d" | "90d" | "month" | "custom";
@@ -27,12 +27,33 @@ function dateInputValue(date: Date) {
   return localDate.toISOString().slice(0, 10);
 }
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+interface ApiMetricsData {
+  configured: boolean;
+  gateway: {
+    name: string;
+    status: "active" | "not_configured";
+    webhookUrl: string;
+  };
+  metrics: {
+    totalApprovedPurchases: number;
+    activeSubscribers: number;
+    canceledSubscribers: number;
+    totalCourtesies: number;
+    activeCourtesies: number;
+    periodApprovedPurchases: number;
+    periodNewSubscribers: number;
+    periodCancellationsOrRefunds: number;
+    hasFinancialAmountData: boolean;
+    realGrossRevenue: number | null;
+    insufficientDataReason: string;
+  };
+  period: {
+    start: string;
+    end: string;
+  };
 }
 
 export default function AdminDashboardPage() {
-  const { users } = useApp();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("30d");
   const [customStartDate, setCustomStartDate] = useState(() =>
     dateInputValue(new Date(Date.now() - 29 * 86_400_000)),
@@ -45,18 +66,12 @@ export default function AdminDashboardPage() {
   const [customDateError, setCustomDateError] = useState("");
   const [customAppliedSuccess, setCustomAppliedSuccess] = useState(false);
 
-  // ORIGEM DOS DADOS:
-  // Atualmente não há gateway de pagamento (Stripe/Asaas/Kiwify) conectado.
-  // Os dados vêm exclusivamente do estado local `users` gerenciado no LocalStorage do navegador.
-  // - Usuárias cadastradas: contagem de contas com perfil "aluna".
-  // - Assinaturas ativas: usuárias com o campo local `subscriptionStatus === "active"`.
-  // - Novas assinaturas: usuárias cadastradas cuja data `createdAt` recai no intervalo do filtro selecionado.
-  // - Cancelamentos: usuárias com `subscriptionStatus === "canceled"`.
-  // - MRR Estimado: soma teórica dos preços de tabela (Anual: R$ 29,90, Trimestral: R$ 39,90, Mensal: R$ 49,90) multiplicados pelas assinaturas ativas locais.
-  // - ARPU Estimado: MRR estimado dividido pelas assinaturas ativas locais.
-  // - Receita recebida, Churn, Crescimento e Taxa de Renovação: exibem "—" pois exigem histórico bancário e webhooks de conciliação.
-  const metrics = useMemo(() => {
-    const students = users.filter((user) => user.role !== "admin");
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<ApiMetricsData | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Calcula intervalo de datas para o filtro ativo
+  const getFilterRange = useCallback(() => {
     const now = new Date();
     let start = new Date(now);
     start.setHours(0, 0, 0, 0);
@@ -78,34 +93,34 @@ export default function AdminDashboardPage() {
       if (!Number.isNaN(customEnd.getTime())) end.setTime(customEnd.getTime());
     }
 
-    const studentsInRange = students.filter((user) => {
-      const createdAt = new Date(user.createdAt);
-      return createdAt >= start && createdAt <= end;
-    });
-
-    const activeSubscriptions = students.filter((user) => user.subscriptionStatus === "active");
-
-    const monthlyPrice = (plan: string) =>
-      plan === "Anual" ? 29.9 : plan === "Trimestral" ? 39.9 : 49.9;
-
-    const estimatedMrr = activeSubscriptions.reduce(
-      (total, user) => total + monthlyPrice(user.subscriptionPlan),
-      0,
-    );
-
     return {
-      registeredUsers: students.length,
-      activeSubscriptions: activeSubscriptions.length,
-      newSubscriptionsInPeriod: studentsInRange.filter(
-        (user) => user.subscriptionStatus === "active" || user.subscriptionStatus === "trial",
-      ).length,
-      canceledSubscriptions: students.filter((user) => user.subscriptionStatus === "canceled").length,
-      estimatedMrr,
-      estimatedArpu: activeSubscriptions.length ? estimatedMrr / activeSubscriptions.length : 0,
-      startDate: start,
-      endDate: end,
+      start: start.toISOString(),
+      end: end.toISOString(),
     };
-  }, [users, timeFilter, appliedCustomStart, appliedCustomEnd]);
+  }, [timeFilter, appliedCustomStart, appliedCustomEnd]);
+
+  // Carrega métricas reais do backend (Supabase + Cakto)
+  const fetchMetrics = useCallback(async () => {
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const { start, end } = getFilterRange();
+      const res = await fetch(`/api/admin/metrics?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+      if (!res.ok) {
+        throw new Error("Não foi possível carregar as métricas reais do servidor.");
+      }
+      const json: ApiMetricsData = await res.json();
+      setData(json);
+    } catch (err) {
+      setFetchError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [getFilterRange]);
+
+  useEffect(() => {
+    fetchMetrics();
+  }, [fetchMetrics]);
 
   const applyCustomPeriod = () => {
     setCustomDateError("");
@@ -135,84 +150,98 @@ export default function AdminDashboardPage() {
     setTimeout(() => setCustomAppliedSuccess(false), 3000);
   };
 
+  const m = data?.metrics || {
+    totalApprovedPurchases: 0,
+    activeSubscribers: 0,
+    canceledSubscribers: 0,
+    totalCourtesies: 0,
+    activeCourtesies: 0,
+    periodApprovedPurchases: 0,
+    periodNewSubscribers: 0,
+    periodCancellationsOrRefunds: 0,
+    hasFinancialAmountData: false,
+    realGrossRevenue: null,
+    insufficientDataReason: "",
+  };
+
   const summaryCards = [
     {
-      title: "Usuárias cadastradas",
-      value: metrics.registeredUsers.toLocaleString("pt-BR"),
-      badge: "Dado Local / Demo",
-      note: "Total de alunas salvas no LocalStorage",
-      icon: Users,
-    },
-    {
-      title: "Assinaturas ativas",
-      value: metrics.activeSubscriptions.toLocaleString("pt-BR"),
-      badge: "Dado Local / Demo",
-      note: "Status ativo registrado localmente",
+      title: "Compras aprovadas (Cakto)",
+      value: m.totalApprovedPurchases.toLocaleString("pt-BR"),
+      badge: "Dado Real • Cakto",
+      note: `Total acumulado de pedidos confirmados pelo webhook. No período: ${m.periodApprovedPurchases}.`,
       icon: CreditCard,
     },
     {
-      title: "Novas assinaturas no período selecionado",
-      value: metrics.newSubscriptionsInPeriod.toLocaleString("pt-BR"),
-      badge: "Dado Local / Demo",
-      note: "Cadastros locais com data no período filtrado",
+      title: "Alunas com acesso ativo",
+      value: m.activeSubscribers.toLocaleString("pt-BR"),
+      badge: "Dado Real • Supabase",
+      note: "Perfis com acesso ativo de assinante pagante (exclui cortesias).",
+      icon: Users,
+    },
+    {
+      title: "Novas compras no período",
+      value: m.periodApprovedPurchases.toLocaleString("pt-BR"),
+      badge: "Dado Real • Cakto",
+      note: "Compras aprovadas no intervalo selecionado pelo filtro.",
       icon: UserPlus,
     },
     {
-      title: "Cancelamentos",
-      value: metrics.canceledSubscriptions.toLocaleString("pt-BR"),
-      badge: "Dado Local / Demo",
-      note: "Status cancelado nos cadastros locais",
+      title: "Cancelamentos / Estornos",
+      value: m.periodCancellationsOrRefunds.toLocaleString("pt-BR"),
+      badge: "Dado Real • Cakto",
+      note: `Eventos de cancelamento/estorno no período. Total de canceladas: ${m.canceledSubscribers}.`,
       icon: UserMinus,
     },
   ];
 
   const financialIndicators = [
     {
-      title: "MRR (receita recorrente mensal)",
-      value: formatCurrency(metrics.estimatedMrr),
-      status: "estimado",
-      badge: "Estimativa Teórica",
-      note: "Soma teórica por plano das alunas ativas locais (R$ 29,90 a R$ 49,90). Não reflete cobrança real.",
+      title: "MRR (receita recorrente)",
+      value: "Dados insuficientes",
+      status: "insuficiente",
+      badge: "Requer valor monetário",
+      note: "O webhook da Cakto confirma aprovação/renovação de acesso, mas não persiste o valor monetário (R$) do pedido no banco de dados.",
       icon: DollarSign,
     },
     {
-      title: "Receita recebida",
-      value: "—",
-      status: "pendente",
-      badge: "Não Integrado",
-      note: "Requer gateway de pagamentos conectado para liquidar transações reais (cartão/Pix).",
+      title: "Receita recebida líquida",
+      value: "Dados insuficientes",
+      status: "insuficiente",
+      badge: "Requer valor monetário",
+      note: "Necessário gravar o montante financeiro líquido de cada transação no Supabase para totalizar receita.",
       icon: DollarSign,
     },
     {
       title: "Taxa de churn",
-      value: "—",
-      status: "pendente",
-      badge: "Não Integrado",
-      note: "Requer histórico mensal de cancelamentos processados por faturamento real.",
+      value: "Dados insuficientes",
+      status: "insuficiente",
+      badge: "Histórico em consolidação",
+      note: "Requer histórico mensal consolidado de ciclos de cobrança ativos versus cancelados ao longo do tempo.",
       icon: Percent,
     },
     {
-      title: "Crescimento",
-      value: "—",
-      status: "pendente",
-      badge: "Não Integrado",
-      note: "Requer comparação com receita consolidada de meses anteriores.",
+      title: "Crescimento financeiro",
+      value: "Dados insuficientes",
+      status: "insuficiente",
+      badge: "Requer histórico mensal",
+      note: "Calculado apenas quando houver comparação entre receitas líquidas de meses anteriores.",
       icon: TrendingUp,
     },
     {
-      title: "ARPU",
-      value: formatCurrency(metrics.estimatedArpu),
-      status: "estimado",
-      badge: "Estimativa Teórica",
-      note: "Média estimada (MRR estimado ÷ ativas locais). Depende de receita real.",
+      title: "ARPU (ticket médio)",
+      value: "Dados insuficientes",
+      status: "insuficiente",
+      badge: "Requer valor monetário",
+      note: "Requer a divisão entre a receita financeira real recebida e o número de alunas ativas.",
       icon: DollarSign,
     },
     {
       title: "Taxa de renovação",
-      value: "—",
-      status: "pendente",
-      badge: "Não Integrado",
-      note: "Requer captura de webhooks de ciclos de renovação automática do gateway.",
+      value: "Dados insuficientes",
+      status: "insuficiente",
+      badge: "Ciclos futuros da Cakto",
+      note: "Métrica ativada conforme eventos subscription_renewed forem recebidos nos próximos ciclos.",
       icon: RefreshCw,
     },
   ];
@@ -229,7 +258,7 @@ export default function AdminDashboardPage() {
             Dashboard Administrativo
           </h1>
           <p className="mt-1 text-sm text-[#827B77]">
-            Acompanhe a base de alunas, adesões no período e indicadores financeiros de recorrência.
+            Indicadores reais de compras via <strong>Cakto</strong>, alunas ativas e cortesias no <strong>Supabase</strong>.
           </p>
         </div>
 
@@ -259,6 +288,15 @@ export default function AdminDashboardPage() {
               {period.label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={fetchMetrics}
+            title="Atualizar dados do servidor"
+            aria-label="Atualizar dados do servidor"
+            className="p-2 rounded-xl text-[#827B77] hover:text-[#292321] hover:bg-[#FAF7F2] transition cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#B77D82]" : ""}`} />
+          </button>
         </div>
       </header>
 
@@ -318,23 +356,30 @@ export default function AdminDashboardPage() {
         </section>
       )}
 
-      {/* Identificação de Status e Origem dos Dados */}
-      <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-xs leading-relaxed text-amber-900">
-        <div className="flex items-start gap-2.5">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+      {/* Identificação da Integração Cakto Ativa */}
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-xs leading-relaxed text-emerald-950">
+        <div className="flex items-start gap-3">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
           <div className="space-y-1">
             <p>
-              <strong className="font-semibold text-amber-950">Status da Integração de Pagamentos:</strong>{" "}
-              <strong>Ainda não há integração de pagamentos configurada</strong> neste projeto (sem gateway como Asaas, Stripe ou Kiwify conectado).
+              <strong className="font-semibold text-emerald-900">Integração de Pagamento Ativa:</strong>{" "}
+              Gateway <strong>Cakto</strong> configurado. O endpoint de webhook do projeto está pronto para processar compras aprovadas, renovações e estornos.
             </p>
-            <p className="text-amber-800">
-              Os números abaixo refletem <strong>dados de demonstração locais</strong> armazenados no navegador. Métricas de faturamento real (receita recebida, churn, crescimento e taxa de renovação) estão sinalizadas como <strong>“—”</strong> para evitar exibir informações fictícias como se fossem transações bancárias reais.
+            <p className="text-emerald-800 text-[11px]">
+              Os dados desta tela são consultados em tempo real diretamente das tabelas <code className="bg-emerald-100/80 px-1 py-0.5 rounded font-mono">cakto_orders</code> e <code className="bg-emerald-100/80 px-1 py-0.5 rounded font-mono">profiles</code> no Supabase. Não são exibidos dados simulados ou fictícios.
             </p>
           </div>
         </div>
       </div>
 
-      {/* 4 Indicadores principais no topo */}
+      {fetchError && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-900 flex items-center gap-2.5">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{fetchError}</span>
+        </div>
+      )}
+
+      {/* 4 Indicadores principais baseados em dados reais */}
       <section aria-label="Indicadores principais" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => {
           const Icon = card.icon;
@@ -346,7 +391,7 @@ export default function AdminDashboardPage() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h2 className="text-xs font-bold uppercase tracking-wider text-[#827B77]">{card.title}</h2>
-                  <span className="inline-block mt-1 text-[10px] bg-[#FAF7F2] text-[#827B77] border border-[#EADBCE] px-2 py-0.5 rounded-full font-medium">
+                  <span className="inline-block mt-1 text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
                     {card.badge}
                   </span>
                 </div>
@@ -363,7 +408,35 @@ export default function AdminDashboardPage() {
         })}
       </section>
 
-      {/* Seção Indicadores Financeiros de Recorrência */}
+      {/* Destaque separado para Cortesias de Influenciadoras */}
+      <section className="bg-white rounded-3xl border border-[#EADBCE] p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="p-3 rounded-2xl bg-[#F7EEEE] text-[#B77D82]">
+            <Gift className="w-5 h-5" />
+          </span>
+          <div>
+            <h3 className="text-sm font-semibold text-[#292321]">
+              Cortesias para Influenciadoras (Contabilizadas Separadamente)
+            </h3>
+            <p className="text-xs text-[#827B77]">
+              Cortesias não são contabilizadas como compras nem como receita paga.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 text-xs">
+          <div className="bg-[#FAF7F2] border border-[#EADBCE] px-3.5 py-2 rounded-xl text-center">
+            <span className="text-[10px] text-[#827B77] block uppercase font-bold">Ativas</span>
+            <strong className="text-sm text-[#292321]">{m.activeCourtesies}</strong>
+          </div>
+          <div className="bg-[#FAF7F2] border border-[#EADBCE] px-3.5 py-2 rounded-xl text-center">
+            <span className="text-[10px] text-[#827B77] block uppercase font-bold">Total Concedidas</span>
+            <strong className="text-sm text-[#292321]">{m.totalCourtesies}</strong>
+          </div>
+        </div>
+      </section>
+
+      {/* Seção Indicadores Financeiros e de Recorrência */}
       <section
         className="rounded-3xl border border-[#EADBCE] bg-white p-6 shadow-xs sm:p-7 space-y-6"
         aria-labelledby="financial-recurrence-heading"
@@ -378,22 +451,21 @@ export default function AdminDashboardPage() {
                 Indicadores Financeiros de Recorrência
               </h2>
               <span className="rounded-full bg-[#FAF7F2] border border-[#EADBCE] px-3 py-1 text-[11px] font-semibold text-[#B77D82]">
-                SaaS Recorrência
+                Cakto
               </span>
             </div>
             <p className="text-xs text-[#827B77] mt-1">
-              Métricas essenciais para acompanhamento do faturamento recorrente e saúde da assinatura.
+              Indicadores com cálculo restrito a dados efetivamente persistidos no Supabase.
             </p>
           </div>
-          <span className="w-fit rounded-full bg-amber-100 text-amber-800 border border-amber-200 px-3 py-1 text-xs font-medium">
-            Integração de pagamento pendente
+          <span className="w-fit rounded-full bg-stone-100 text-[#827B77] border border-stone-200 px-3 py-1 text-xs font-medium">
+            Transparência de métricas
           </span>
         </div>
 
         <div className="grid grid-cols-1 gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {financialIndicators.map((indicator) => {
             const Icon = indicator.icon;
-            const isEstimated = indicator.status === "estimado";
 
             return (
               <article
@@ -405,15 +477,9 @@ export default function AdminDashboardPage() {
                     <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white border border-[#EADBCE] text-[#B77D82]">
                       <Icon className="h-3.5 w-3.5" />
                     </span>
-                    {isEstimated ? (
-                      <span className="rounded bg-[#EBD6D5] text-[#292321] px-1.5 py-0.5 text-[10px] font-semibold">
-                        {indicator.badge}
-                      </span>
-                    ) : (
-                      <span className="rounded bg-stone-100 border border-stone-200 text-[#827B77] px-1.5 py-0.5 text-[10px] font-medium">
-                        {indicator.badge}
-                      </span>
-                    )}
+                    <span className="rounded bg-stone-100 border border-stone-200 text-[#827B77] px-1.5 py-0.5 text-[10px] font-medium">
+                      {indicator.badge}
+                    </span>
                   </div>
                   <h3 className="text-xs font-semibold text-[#292321] line-clamp-2 min-h-[32px]">
                     {indicator.title}
@@ -421,7 +487,7 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div className="pt-3">
-                  <p className="font-serif text-2xl font-bold text-[#292321]">
+                  <p className="font-serif text-base font-bold text-[#827B77]">
                     {indicator.value}
                   </p>
                   <p className="mt-1 text-[11px] leading-relaxed text-[#827B77]">
@@ -434,46 +500,46 @@ export default function AdminDashboardPage() {
         </div>
       </section>
 
-      {/* Painel Explicativo: O que falta para dados reais */}
+      {/* Painel Explicativo: Como os dados da Cakto operam */}
       <section className="rounded-3xl border border-[#EADBCE] bg-[#FFFFFF] p-6 shadow-xs space-y-4">
         <div className="flex items-center gap-2 text-[#292321]">
           <HelpCircle className="w-5 h-5 text-[#B77D82]" />
           <h2 className="font-serif font-bold text-lg">
-            Como conectar dados reais de faturamento e assinaturas
+            Arquitetura de dados da Cakto e do Supabase
           </h2>
         </div>
         <p className="text-xs text-[#827B77] leading-relaxed">
-          Para que o dashboard exiba transações financeiras reais sem depender de dados locais de demonstração, o projeto necessita de três componentes de infraestrutura:
+          O Vitta Pilates utiliza a <strong>Cakto</strong> como gateway oficial para processamento de cartões e Pix, integrado de forma segura ao <strong>Supabase</strong>:
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
           <div className="p-4 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[#292321]">
-              <CreditCard className="w-4 h-4 text-[#B77D82]" />
-              <h3>1. Gateway de Cobrança</h3>
+              <Webhook className="w-4 h-4 text-[#B77D82]" />
+              <h3>1. Webhook Oficial Ativo</h3>
             </div>
             <p className="text-[11px] text-[#827B77] leading-relaxed">
-              Conta ativa em um gateway como <strong>Asaas</strong>, <strong>Stripe</strong> ou <strong>Kiwify</strong> com chaves de API para cobrança recorrente via Cartão de Crédito e Pix.
+              Rota <code className="text-[#B77D82] font-mono">/api/webhooks/cakto</code> configurada com validação de assinatura e idempotência na tabela <code className="font-mono">cakto_orders</code>.
             </p>
           </div>
 
           <div className="p-4 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[#292321]">
-              <Webhook className="w-4 h-4 text-[#B77D82]" />
-              <h3>2. Webhooks Server-Side</h3>
+              <ShieldCheck className="w-4 h-4 text-[#B77D82]" />
+              <h3>2. Liberação Automática de Acesso</h3>
             </div>
             <p className="text-[11px] text-[#827B77] leading-relaxed">
-              Rota de API (ex.: <code className="text-[#B77D82] font-mono">/api/webhooks/pagamentos</code>) recebendo notificações instantâneas de pagamento confirmado, renovação ou cancelamento.
+              Ao confirmar compra aprovada, o perfil é criado no Supabase Auth com link para definir senha, garantindo acesso exclusivo das alunas pagantes às aulas.
             </p>
           </div>
 
           <div className="p-4 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[#292321]">
               <Database className="w-4 h-4 text-[#B77D82]" />
-              <h3>3. Banco de Dados Central</h3>
+              <h3>3. Persistência de Auditoria</h3>
             </div>
             <p className="text-[11px] text-[#827B77] leading-relaxed">
-              Tabelas em banco relacional (ex.: <strong>Supabase / PostgreSQL</strong>) gravando faturas, extratos e datas de ciclo, permitindo somar MRR e calcular Churn histórico real.
+              Registra os identificadores de pedido, e-mail e status do evento. Para cálculo de MRR monetário no dashboard, basta mapear o campo de valor financeiro no payload persistido.
             </p>
           </div>
         </div>

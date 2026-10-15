@@ -405,9 +405,9 @@ export default function AdminCortesiasPage() {
 
       {/* Modal Conceder Nova Cortesia */}
       {isCreateOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] p-6 max-w-md w-full space-y-4 shadow-xl animate-fade-in">
-            <div className="flex items-center justify-between pb-3 border-b border-[#EADBCE]">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] p-5 sm:p-6 max-w-md w-full my-auto max-h-[90vh] flex flex-col shadow-xl animate-fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EADBCE] shrink-0">
               <div className="flex items-center gap-2">
                 <span className="p-2 rounded-xl bg-[#F7EEEE] text-[#B77D82]">
                   <Gift className="w-4 h-4" />
@@ -417,44 +417,48 @@ export default function AdminCortesiasPage() {
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setIsCreateOpen(false)}
-                className="text-[#827B77] hover:text-[#292321] text-xs font-semibold"
+                className="text-[#827B77] hover:text-[#292321] text-xs font-semibold px-2 py-1 rounded-lg hover:bg-[#FAF7F2] transition cursor-pointer"
               >
                 Fechar
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="space-y-3.5">
+            <form onSubmit={handleCreate} className="space-y-4 pt-3 overflow-y-auto pr-1">
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-[#827B77] block">
+                <label htmlFor="createInfluencerName" className="text-[11px] font-bold uppercase tracking-wider text-[#827B77] block">
                   Nome da Influenciadora
                 </label>
                 <input
+                  id="createInfluencerName"
                   type="text"
                   required
+                  autoFocus
                   placeholder="Ex: Gabriela Pugliesi"
                   value={createName}
                   onChange={(e) => setCreateName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321] placeholder:text-[#827B77]/60 focus:outline-none focus:ring-2 focus:ring-[#B77D82]/50 transition"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-[#827B77] block">
+                <label htmlFor="createInfluencerEmail" className="text-[11px] font-bold uppercase tracking-wider text-[#827B77] block">
                   E-mail para Convite
                 </label>
                 <input
+                  id="createInfluencerEmail"
                   type="email"
                   required
                   placeholder="influenciadora@instagram.com"
                   value={createEmail}
                   onChange={(e) => setCreateEmail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321] placeholder:text-[#827B77]/60 focus:outline-none focus:ring-2 focus:ring-[#B77D82]/50 transition"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-[#827B77] block">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-[#827B77] block">
                   Duração do Acesso Gratuito
                 </label>
                 <div className="grid grid-cols-4 gap-2">
@@ -463,9 +467,9 @@ export default function AdminCortesiasPage() {
                       type="button"
                       key={d}
                       onClick={() => setCreateDays(d)}
-                      className={`py-2 rounded-xl text-xs font-semibold transition border ${
+                      className={`py-2 rounded-xl text-xs font-semibold transition border cursor-pointer ${
                         createDays === d
-                          ? "bg-[#B77D82] text-white border-[#B77D82]"
+                          ? "bg-[#B77D82] text-white border-[#B77D82] shadow-xs"
                           : "bg-[#FAF7F2] text-[#292321] border-[#EADBCE] hover:border-[#B77D82]/50"
                       }`}
                     >
@@ -473,7 +477,7 @@ export default function AdminCortesiasPage() {
                     </button>
                   ))}
                 </div>
-                <div className="pt-1.5 flex items-center gap-2 text-xs">
+                <div className="pt-1 flex items-center gap-2 text-xs">
                   <span className="text-[#827B77]">Ou outro prazo:</span>
                   <input
                     type="number"
@@ -481,26 +485,27 @@ export default function AdminCortesiasPage() {
                     max="365"
                     value={createDays}
                     onChange={(e) => setCreateDays(Number(e.target.value))}
-                    className="w-20 px-2.5 py-1 rounded-lg border border-[#EADBCE] bg-[#FAF7F2] text-xs"
+                    className="w-20 px-2.5 py-1 rounded-lg border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321] focus:outline-none focus:ring-2 focus:ring-[#B77D82]/50"
                   />
                   <span className="text-[#827B77]">dias</span>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-[#827B77] block">
+                <label htmlFor="createInfluencerNotes" className="text-[11px] font-bold uppercase tracking-wider text-[#827B77] block">
                   Observações / Campanha (Opcional)
                 </label>
                 <input
+                  id="createInfluencerNotes"
                   type="text"
                   placeholder="Ex: Parceria Stories Abril / Cupom VITTA10"
                   value={createNotes}
                   onChange={(e) => setCreateNotes(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321] placeholder:text-[#827B77]/60 focus:outline-none focus:ring-2 focus:ring-[#B77D82]/50 transition"
                 />
               </div>
 
-              <div className="p-3 bg-[#FAF7F2] rounded-2xl border border-[#EADBCE] text-[11px] text-[#827B77] space-y-1">
+              <div className="p-3 bg-[#FAF7F2] rounded-2xl border border-[#EADBCE] text-[11px] text-[#827B77] space-y-1 leading-relaxed">
                 <div className="flex items-center gap-1.5 font-semibold text-[#292321]">
                   <ShieldCheck className="w-3.5 h-3.5 text-[#B77D82]" />
                   Fluxo Seguro do Supabase Auth:
@@ -510,18 +515,18 @@ export default function AdminCortesiasPage() {
                 </p>
               </div>
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 pt-2 border-t border-[#EADBCE]/60">
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition disabled:opacity-50"
+                  className="flex-1 py-2.5 px-4 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition disabled:opacity-50 cursor-pointer shadow-xs"
                 >
                   {submitting ? "Enviando Convite..." : "Confirmar e Enviar Convite"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsCreateOpen(false)}
-                  className="px-4 py-2.5 rounded-full border border-[#EADBCE] text-xs text-[#827B77] hover:bg-[#FAF7F2]"
+                  className="px-4 py-2.5 rounded-full border border-[#EADBCE] text-xs font-semibold text-[#827B77] hover:text-[#292321] hover:bg-[#FAF7F2] transition cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -533,15 +538,16 @@ export default function AdminCortesiasPage() {
 
       {/* Modal Renovar Cortesia */}
       {renewTarget && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] p-6 max-w-sm w-full space-y-4 shadow-xl animate-fade-in">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] p-5 sm:p-6 max-w-sm w-full my-auto max-h-[90vh] flex flex-col space-y-4 shadow-xl animate-fade-in">
             <div className="flex items-center justify-between pb-2 border-b border-[#EADBCE]">
               <h3 className="font-serif font-bold text-base text-[#292321]">
                 Renovar Prazo de Cortesia
               </h3>
               <button
+                type="button"
                 onClick={() => setRenewTarget(null)}
-                className="text-[#827B77] text-xs"
+                className="text-[#827B77] hover:text-[#292321] text-xs font-semibold px-2 py-1 rounded-lg hover:bg-[#FAF7F2] transition cursor-pointer"
               >
                 Fechar
               </button>

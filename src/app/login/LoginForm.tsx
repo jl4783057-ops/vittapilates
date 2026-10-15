@@ -29,6 +29,8 @@ export function LoginForm({
   const successMessage =
     sucesso === "senha_definida"
       ? "Sua senha foi cadastrada com sucesso! Faça login abaixo para acessar a área da aluna."
+      : sucesso === "senha_redefinida"
+      ? "Sua nova senha foi salva com sucesso! Faça login com a nova senha para acessar sua conta."
       : "";
 
   const handleSubmit = async (e: React.FormEvent) => {

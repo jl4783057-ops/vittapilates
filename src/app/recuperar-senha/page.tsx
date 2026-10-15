@@ -31,24 +31,23 @@ export default function RecoverPasswordPage() {
     setLoading(true);
 
     try {
-      const redirectTo = `${window.location.origin}/definir-senha`;
+      // Redireciona diretamente para a rota de redefinição de senha dedicada (/redefinir-senha)
+      const redirectTo = `${window.location.origin}/redefinir-senha`;
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
         redirectTo,
       });
 
       if (resetError) {
-        if (resetError.message.toLowerCase().includes("too many requests")) {
+        if (resetError.message.toLowerCase().includes("too many requests") || resetError.status === 429) {
           setError("Muitas tentativas em pouco tempo. Aguarde alguns minutos antes de solicitar novamente.");
-        } else {
-          setError(
-            resetError.message ||
-              "Não foi possível enviar o e-mail de recuperação. Tente novamente mais tarde."
-          );
+          setLoading(false);
+          return;
         }
-        setLoading(false);
-        return;
+        // Em caso de erro não-rate-limit, se for de formato informamos o usuário; senão, tratamos com mensagem genérica para não revelar existência de conta
+        console.error("Erro auth resetPasswordForEmail:", resetError.message);
       }
 
+      // Mostramos tela de confirmação de envio para qualquer endereço válido (prática recomendada OWASP para evitar enumeração de contas)
       setSubmitted(true);
     } catch (err: unknown) {
       console.error("Erro ao solicitar recuperação de senha:", err);

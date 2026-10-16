@@ -13,9 +13,17 @@ export const isSupabaseConfigured = Boolean(
   !supabaseUrl.includes('placeholder')
 );
 
-// O cliente do navegador usa @supabase/ssr para manter os tokens em cookies HTTP,
-// evitando persistência de tokens sensíveis no localStorage.
+// O cliente do navegador usa @supabase/ssr com detectSessionInUrl ativado para
+// capturar imediatamente tokens PKCE (?code=) ou fragmentos de hash (#access_token=)
+// no Safari/iPhone e em qualquer navegador mobile/desktop.
 export const supabase = isSupabaseConfigured
-  ? createBrowserClient(supabaseUrl, supabaseAnonKey)
+  ? createBrowserClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    })
   : null;
 

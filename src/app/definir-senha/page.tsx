@@ -35,14 +35,28 @@ function SetPasswordContent() {
 
   useEffect(() => {
     let isMounted = true;
+    let resolved = false;
+
+    const markSuccess = (email: string) => {
+      if (resolved || !isMounted) return;
+      resolved = true;
+      setHasValidSession(true);
+      setUserEmail(email || "");
+      setError("");
+      setCheckingSession(false);
+    };
+
+    const markFailure = (msg: string) => {
+      if (resolved || !isMounted) return;
+      resolved = true;
+      setHasValidSession(false);
+      setError(msg);
+      setCheckingSession(false);
+    };
 
     async function validateAuth() {
       if (!isSupabaseConfigured || !supabase) {
-        if (isMounted) {
-          setHasValidSession(false);
-          setError("O serviço de autenticação não está disponível no momento.");
-          setCheckingSession(false);
-        }
+        markFailure("O serviço de autenticação não está disponível no momento.");
         return;
       }
 
@@ -50,19 +64,47 @@ function SetPasswordContent() {
       const urlError = searchParams.get("error");
       const errorDescription = searchParams.get("error_description");
       if (urlError) {
-        if (isMounted) {
-          setHasValidSession(false);
-          if (urlError === "expired_token" || urlError === "access_denied" || (errorDescription && errorDescription.includes("expired"))) {
-            setError("Este link de convite já expirou ou já foi utilizado. Solicite um novo link.");
-          } else {
-            setError(errorDescription || "Link de acesso inválido ou expirado. Por favor, utilize o link mais recente recebido no seu e-mail.");
-          }
-          setCheckingSession(false);
+        if (urlError === "expired_token" || urlError === "access_denied" || (errorDescription && errorDescription.includes("expired"))) {
+          markFailure("Este link de convite já expirou ou já foi utilizado. Solicite um novo link.");
+        } else {
+          markFailure(errorDescription || "Link de acesso inválido ou expirado. Por favor, utilize o link mais recente recebido no seu e-mail.");
         }
         return;
       }
 
-      // 2. Trata token_hash e type (quando Supabase envia link direto de invite/recovery via OTP)
+      // 2. Extração de tokens no fragmento Hash (#access_token=...&refresh_token=...)
+      // Crucial para links de convite no Safari/iPhone quando o redirect do Supabase Auth usa fragmento
+      if (typeof window !== "undefined" && window.location.hash) {
+        try {
+          const rawHash = window.location.hash.replace(/^#/, "");
+          const hashParams = new URLSearchParams(rawHash);
+          const accessToken = hashParams.get("access_token");
+          const refreshToken = hashParams.get("refresh_token");
+          const hashError = hashParams.get("error");
+          const hashErrorDesc = hashParams.get("error_description");
+
+          if (hashError) {
+            markFailure(hashErrorDesc || "Link de convite inválido ou expirado.");
+            return;
+          }
+
+          if (accessToken && refreshToken) {
+            const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+
+            if (!setSessionErr && setSessionData?.session?.user) {
+              markSuccess(setSessionData.session.user.email || "");
+              return;
+            }
+          }
+        } catch (hashErr) {
+          console.warn("[definir-senha] Falha ao processar hash da URL:", hashErr);
+        }
+      }
+
+      // 3. Trata token_hash e type (quando Supabase envia link direto de invite via OTP)
       const tokenHash = searchParams.get("token_hash");
       const otpType = (searchParams.get("type") as EmailOtpType) || "invite";
       if (tokenHash) {
@@ -73,110 +115,73 @@ function SetPasswordContent() {
           });
 
           if (otpError) {
-            if (isMounted) {
-              setHasValidSession(false);
-              setError("Este link de convite é inválido ou já expirou. Solicite um novo link por e-mail.");
-              setCheckingSession(false);
-            }
+            console.error("[definir-senha] Erro verifyOtp:", otpError);
+            markFailure("Este link de convite é inválido ou já expirou. Solicite um novo link por e-mail.");
             return;
           }
 
-          if (otpData?.user && isMounted) {
-            setHasValidSession(true);
-            setUserEmail(otpData.user.email || "");
-            setCheckingSession(false);
+          if (otpData?.user) {
+            markSuccess(otpData.user.email || "");
             return;
           }
-        } catch {
-          if (isMounted) {
-            setHasValidSession(false);
-            setError("Falha ao validar o link de convite.");
-            setCheckingSession(false);
-          }
-          return;
+        } catch (otpErr) {
+          console.error("[definir-senha] Exceção verifyOtp:", otpErr);
         }
       }
 
-      // 3. Trata código PKCE (searchParams ?code=...)
+      // 4. Trata código PKCE (searchParams ?code=...)
       const code = searchParams.get("code");
       if (code) {
         try {
           const { data: exchangeData, error: exchangeError } =
             await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) {
-            if (isMounted) {
-              setHasValidSession(false);
-              setError("Este link de convite é inválido ou já expirou. Solicite um novo link.");
-              setCheckingSession(false);
-            }
+            console.error("[definir-senha] Erro PKCE exchange:", exchangeError);
+            markFailure("Este link de convite é inválido ou já expirou. Solicite um novo link.");
             return;
           }
-          if (exchangeData?.user && isMounted) {
-            setHasValidSession(true);
-            setUserEmail(exchangeData.user.email || "");
-            setCheckingSession(false);
+          if (exchangeData?.user) {
+            markSuccess(exchangeData.user.email || "");
             return;
           }
-        } catch {
-          if (isMounted) {
-            setHasValidSession(false);
-            setError("Erro ao validar o código de acesso.");
-            setCheckingSession(false);
-          }
-          return;
+        } catch (pkceErr) {
+          console.error("[definir-senha] Exceção PKCE:", pkceErr);
         }
       }
 
-      // 4. Verifica se já existe uma sessão ativa (seja via cookies SSR ou sessão restaurada)
+      // 5. Verifica se já existe uma sessão ativa (seja via cookies SSR ou sessão restaurada)
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          if (isMounted) {
-            setHasValidSession(false);
-            setError("Sessão expirada ou inválida. Por favor, use o link do seu e-mail.");
-            setCheckingSession(false);
-          }
-          return;
-        }
-
+        const { data: sessionData } = await supabase.auth.getSession();
         if (sessionData?.session?.user) {
-          if (isMounted) {
-            setHasValidSession(true);
-            setUserEmail(sessionData.session.user.email || "");
-            setCheckingSession(false);
-          }
+          markSuccess(sessionData.session.user.email || "");
           return;
         }
-      } catch {
-        // ignora e passa para listener
+      } catch (sessErr) {
+        console.warn("[definir-senha] Erro getSession:", sessErr);
       }
 
-      // 5. Escuta evento de autenticação (hash #access_token no cliente)
+      // 6. Escuta evento de autenticação (hash #access_token no cliente)
       const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === "SIGNED_IN" || event === "PASSWORD_RECOVERY" || event === "USER_UPDATED") {
-          if (session?.user && isMounted) {
-            setHasValidSession(true);
-            setUserEmail(session.user.email || "");
-            setCheckingSession(false);
-          }
+        if (session?.user && (event === "SIGNED_IN" || event === "PASSWORD_RECOVERY" || event === "USER_UPDATED" || event === "INITIAL_SESSION")) {
+          markSuccess(session.user.email || "");
         }
       });
 
-      // 6. Timeout de segurança para evitar loading infinito
-      const timer = setTimeout(() => {
-        if (isMounted && checkingSession) {
-          const hasHashToken =
-            typeof window !== "undefined" &&
-            (window.location.hash.includes("access_token") || window.location.hash.includes("type="));
-          if (!hasHashToken) {
-            setHasValidSession(false);
-            setError(
-              "Nenhum link de convite válido ou sessão ativa encontrado. Por favor, clique no link de convite enviado para o seu e-mail."
-            );
+      // 7. Timeout de segurança para evitar loading infinito (2.5 segundos)
+      const timer = setTimeout(async () => {
+        if (resolved || !isMounted) return;
+        try {
+          const current = await supabase?.auth.getSession();
+          if (current?.data?.session?.user) {
+            markSuccess(current.data.session.user.email || "");
+            return;
           }
-          setCheckingSession(false);
-        }
-      }, 1800);
+        } catch {}
+
+        markFailure(
+          "Nenhum link de convite válido ou sessão ativa encontrado. Por favor, clique no link de convite enviado para o seu e-mail."
+        );
+      }, 2500);
 
       return () => {
         authListener.subscription.unsubscribe();

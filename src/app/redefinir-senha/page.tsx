@@ -35,66 +35,99 @@ function ResetPasswordContent() {
 
   useEffect(() => {
     let isMounted = true;
+    let resolved = false;
+
+    const markSuccess = (email: string) => {
+      if (resolved || !isMounted) return;
+      resolved = true;
+      setHasValidSession(true);
+      setUserEmail(email || "");
+      setError("");
+      setCheckingSession(false);
+    };
+
+    const markFailure = (msg: string) => {
+      if (resolved || !isMounted) return;
+      resolved = true;
+      setHasValidSession(false);
+      setError(msg);
+      setCheckingSession(false);
+    };
 
     async function validateRecoveryAuth() {
       if (!isSupabaseConfigured || !supabase) {
-        if (isMounted) {
-          setHasValidSession(false);
-          setError("O serviço de autenticação não está disponível no momento.");
-          setCheckingSession(false);
-        }
+        markFailure("O serviço de autenticação não está disponível no momento.");
         return;
       }
 
-      // 1. Verifica erros retornados pela URL (ex.: token expirado)
+      // 1. Erro explícito retornado na URL
       const urlError = searchParams.get("error");
       const errorDescription = searchParams.get("error_description");
       if (urlError) {
-        if (isMounted) {
-          setHasValidSession(false);
-          if (
-            urlError === "expired_token" ||
-            urlError === "access_denied" ||
-            (errorDescription && errorDescription.includes("expired"))
-          ) {
-            setError("Este link de recuperação já expirou ou já foi utilizado. Solicite um novo link.");
-          } else {
-            setError(
-              errorDescription ||
-                "Link de recuperação inválido ou expirado. Por favor, solicite um novo link."
-            );
-          }
-          setCheckingSession(false);
+        if (
+          urlError === "expired_token" ||
+          urlError === "access_denied" ||
+          (errorDescription && errorDescription.includes("expired"))
+        ) {
+          markFailure("Este link de recuperação já expirou ou já foi utilizado. Solicite um novo link.");
+        } else {
+          markFailure(errorDescription || "Link de recuperação inválido ou expirado. Solicite um novo link.");
         }
         return;
       }
 
-      // 2. PKCE code exchange
+      // 2. Extração de tokens no fragmento Hash (#access_token=...&refresh_token=...)
+      // Crucial para Safari e mobile quando o redirect do Supabase Auth usa fragmento
+      if (typeof window !== "undefined" && window.location.hash) {
+        try {
+          const rawHash = window.location.hash.replace(/^#/, "");
+          const hashParams = new URLSearchParams(rawHash);
+          const accessToken = hashParams.get("access_token");
+          const refreshToken = hashParams.get("refresh_token");
+          const hashError = hashParams.get("error");
+          const hashErrorDesc = hashParams.get("error_description");
+
+          if (hashError) {
+            markFailure(hashErrorDesc || "Link de recuperação inválido ou expirado.");
+            return;
+          }
+
+          if (accessToken && refreshToken) {
+            const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+
+            if (!setSessionErr && setSessionData?.session?.user) {
+              markSuccess(setSessionData.session.user.email || "");
+              return;
+            }
+          }
+        } catch (hashErr) {
+          console.warn("[redefinir-senha] Falha ao processar hash da URL:", hashErr);
+        }
+      }
+
+      // 3. Troca de código PKCE (?code=...)
       const code = searchParams.get("code");
       if (code) {
         try {
           const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) {
-            console.error("Erro ao validar código de recuperação:", exchangeError);
-            if (isMounted) {
-              setHasValidSession(false);
-              setError("Link de recuperação expirado ou inválido. Por favor, solicite um novo link.");
-              setCheckingSession(false);
-            }
+            console.error("[redefinir-senha] Erro PKCE code exchange:", exchangeError);
+            markFailure("Link de recuperação expirado ou inválido. Por favor, solicite um novo link.");
             return;
           }
-          if (data?.session && isMounted) {
-            setHasValidSession(true);
-            setUserEmail(data.session.user.email || "");
-            setCheckingSession(false);
+          if (data?.session?.user) {
+            markSuccess(data.session.user.email || "");
             return;
           }
         } catch (err) {
-          console.error("Exceção na troca de código PKCE:", err);
+          console.error("[redefinir-senha] Exceção PKCE:", err);
         }
       }
 
-      // 3. Token hash (Email OTP com tipo 'recovery')
+      // 4. Token hash OTP (?token_hash=...&type=recovery)
       const tokenHash = searchParams.get("token_hash");
       const typeParam = (searchParams.get("type") as EmailOtpType) || "recovery";
       if (tokenHash) {
@@ -104,59 +137,52 @@ function ResetPasswordContent() {
             type: typeParam,
           });
           if (verifyError) {
-            console.error("Erro ao verificar token_hash:", verifyError);
-            if (isMounted) {
-              setHasValidSession(false);
-              setError("Link de recuperação expirado ou inválido. Solicite um novo link.");
-              setCheckingSession(false);
-            }
+            console.error("[redefinir-senha] Erro verifyOtp:", verifyError);
+            markFailure("Link de recuperação expirado ou inválido. Solicite um novo link.");
             return;
           }
-          if (data?.session && isMounted) {
-            setHasValidSession(true);
-            setUserEmail(data.session.user.email || "");
-            setCheckingSession(false);
+          if (data?.session?.user) {
+            markSuccess(data.session.user.email || "");
             return;
           }
         } catch (err) {
-          console.error("Exceção no verifyOtp:", err);
+          console.error("[redefinir-senha] Exceção verifyOtp:", err);
         }
       }
 
-      // 4. Sessão ativa já existente (ex.: via callback ou cookie persistido)
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (sessionData?.session && isMounted) {
-        setHasValidSession(true);
-        setUserEmail(sessionData.session.user.email || "");
-        setCheckingSession(false);
-        return;
+      // 5. Sessão já ativa no navegador/cookies
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.user) {
+          markSuccess(sessionData.session.user.email || "");
+          return;
+        }
+      } catch (sessErr) {
+        console.warn("[redefinir-senha] Erro getSession:", sessErr);
       }
 
-      // 5. Escuta evento de auth caso o Supabase conclua parsing no hash (#access_token=...)
+      // 6. Listener de auth caso o Supabase conclua parsing assíncrono
       const {
         data: { subscription },
       } = supabase.auth.onAuthStateChange((event, session) => {
-        if (!isMounted) return;
-        if (session && (event === "SIGNED_IN" || event === "PASSWORD_RECOVERY" || event === "INITIAL_SESSION")) {
-          setHasValidSession(true);
-          setUserEmail(session.user.email || "");
-          setCheckingSession(false);
+        if (session?.user && (event === "SIGNED_IN" || event === "PASSWORD_RECOVERY" || event === "INITIAL_SESSION")) {
+          markSuccess(session.user.email || "");
         }
       });
 
-      // 6. Timeout de segurança para evitar loading infinito
+      // 7. Timeout de segurança: nunca deixar em loading infinito (3 segundos)
       const timer = setTimeout(async () => {
-        if (!isMounted) return;
-        const currentSession = await supabase?.auth.getSession();
-        if (currentSession?.data?.session) {
-          setHasValidSession(true);
-          setUserEmail(currentSession.data.session.user.email || "");
-        } else {
-          setHasValidSession(false);
-          setError("Nenhum link ou sessão de recuperação válida encontrada. Por favor, solicite a recuperação de senha.");
-        }
-        setCheckingSession(false);
-      }, 3500);
+        if (resolved || !isMounted) return;
+        try {
+          const current = await supabase?.auth.getSession();
+          if (current?.data?.session?.user) {
+            markSuccess(current.data.session.user.email || "");
+            return;
+          }
+        } catch {}
+
+        markFailure("Nenhum link ou sessão de recuperação válida encontrada. Por favor, solicite um novo link.");
+      }, 2500);
 
       return () => {
         subscription.unsubscribe();
@@ -219,9 +245,9 @@ function ResetPasswordContent() {
       setSuccess(true);
       setTimeout(() => {
         router.push("/login?sucesso=senha_redefinida");
-      }, 2500);
+      }, 2000);
     } catch (err: unknown) {
-      console.error("Erro inesperado ao atualizar senha:", err);
+      console.error("[redefinir-senha] Erro inesperado ao atualizar senha:", err);
       setError("Ocorreu um erro ao atualizar sua senha. Tente novamente.");
     } finally {
       setLoading(false);

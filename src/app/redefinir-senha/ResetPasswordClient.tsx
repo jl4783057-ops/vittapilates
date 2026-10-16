@@ -71,7 +71,50 @@ function ResetPasswordContent() {
           return;
         }
 
-        // 1. Erro explícito retornado na URL
+        // 1. Sessão já ativa no navegador/cookies (ex.: após redirecionamento pelo Supabase ou /api/auth/callback)
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session?.user) {
+            markSuccess(sessionData.session.user.email || "");
+            return;
+          }
+        } catch (sessErr) {
+          console.warn("[redefinir-senha] Erro getSession:", sessErr);
+        }
+
+        // 2. Extração de tokens no fragmento Hash (#access_token=...&refresh_token=...)
+        // O Supabase Auth redireciona após /auth/v1/verify com os tokens no fragmento
+        if (typeof window !== "undefined" && window.location.hash) {
+          try {
+            const rawHash = window.location.hash.replace(/^#/, "");
+            const hashParams = new URLSearchParams(rawHash);
+            const accessToken = hashParams.get("access_token");
+            const refreshToken = hashParams.get("refresh_token");
+
+            if (accessToken && refreshToken) {
+              const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+
+              if (!setSessionErr && setSessionData?.session?.user) {
+                markSuccess(setSessionData.session.user.email || "");
+                return;
+              }
+            }
+
+            const hashError = hashParams.get("error");
+            const hashErrorDesc = hashParams.get("error_description");
+            if (hashError) {
+              markFailure(hashErrorDesc || "Link de recuperação inválido ou expirado. Por favor, solicite um novo link.");
+              return;
+            }
+          } catch (hashErr) {
+            console.warn("[redefinir-senha] Falha ao processar hash da URL:", hashErr);
+          }
+        }
+
+        // 3. Erro explícito retornado na query string da URL (?error=...)
         const urlError = searchParams.get("error");
         const errorDescription = searchParams.get("error_description");
         if (urlError) {
@@ -86,38 +129,6 @@ function ResetPasswordContent() {
           }
           return;
         }
-
-      // 2. Extração de tokens no fragmento Hash (#access_token=...&refresh_token=...)
-      // Crucial para Safari e mobile quando o redirect do Supabase Auth usa fragmento
-      if (typeof window !== "undefined" && window.location.hash) {
-        try {
-          const rawHash = window.location.hash.replace(/^#/, "");
-          const hashParams = new URLSearchParams(rawHash);
-          const accessToken = hashParams.get("access_token");
-          const refreshToken = hashParams.get("refresh_token");
-          const hashError = hashParams.get("error");
-          const hashErrorDesc = hashParams.get("error_description");
-
-          if (hashError) {
-            markFailure(hashErrorDesc || "Link de recuperação inválido ou expirado.");
-            return;
-          }
-
-          if (accessToken && refreshToken) {
-            const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
-
-            if (!setSessionErr && setSessionData?.session?.user) {
-              markSuccess(setSessionData.session.user.email || "");
-              return;
-            }
-          }
-        } catch (hashErr) {
-          console.warn("[redefinir-senha] Falha ao processar hash da URL:", hashErr);
-        }
-      }
 
       // 3. Troca de código PKCE (?code=...)
       const code = searchParams.get("code");
@@ -161,16 +172,7 @@ function ResetPasswordContent() {
         }
       }
 
-      // 5. Sessão já ativa no navegador/cookies
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData?.session?.user) {
-          markSuccess(sessionData.session.user.email || "");
-          return;
-        }
-      } catch (sessErr) {
-        console.warn("[redefinir-senha] Erro getSession:", sessErr);
-      }
+
 
       // 6. Listener de auth caso o Supabase conclua parsing assíncrono
       const {

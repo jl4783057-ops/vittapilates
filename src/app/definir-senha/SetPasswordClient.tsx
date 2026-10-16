@@ -69,16 +69,15 @@ function SetPasswordContent() {
           return;
         }
 
-      // 1. Verifica se a URL retornou com erro explícito do Supabase
-      const urlError = searchParams.get("error");
-      const errorDescription = searchParams.get("error_description");
-      if (urlError) {
-        if (urlError === "expired_token" || urlError === "access_denied" || (errorDescription && errorDescription.includes("expired"))) {
-          markFailure("Este link de convite já expirou ou já foi utilizado. Solicite um novo link.");
-        } else {
-          markFailure(errorDescription || "Link de acesso inválido ou expirado. Por favor, utilize o link mais recente recebido no seu e-mail.");
+      // 1. Sessão já ativa no navegador/cookies (ex.: após redirecionamento pelo Supabase ou /api/auth/callback)
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.user) {
+          markSuccess(sessionData.session.user.email || "");
+          return;
         }
-        return;
+      } catch (sessErr) {
+        console.warn("[definir-senha] Erro getSession:", sessErr);
       }
 
       // 2. Extração de tokens no fragmento Hash (#access_token=...&refresh_token=...)
@@ -89,13 +88,6 @@ function SetPasswordContent() {
           const hashParams = new URLSearchParams(rawHash);
           const accessToken = hashParams.get("access_token");
           const refreshToken = hashParams.get("refresh_token");
-          const hashError = hashParams.get("error");
-          const hashErrorDesc = hashParams.get("error_description");
-
-          if (hashError) {
-            markFailure(hashErrorDesc || "Link de convite inválido ou expirado.");
-            return;
-          }
 
           if (accessToken && refreshToken) {
             const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
@@ -108,9 +100,28 @@ function SetPasswordContent() {
               return;
             }
           }
+
+          const hashError = hashParams.get("error");
+          const hashErrorDesc = hashParams.get("error_description");
+          if (hashError) {
+            markFailure(hashErrorDesc || "Link de convite inválido ou expirado.");
+            return;
+          }
         } catch (hashErr) {
           console.warn("[definir-senha] Falha ao processar hash da URL:", hashErr);
         }
+      }
+
+      // 3. Verifica se a URL retornou com erro explícito do Supabase
+      const urlError = searchParams.get("error");
+      const errorDescription = searchParams.get("error_description");
+      if (urlError) {
+        if (urlError === "expired_token" || urlError === "access_denied" || (errorDescription && errorDescription.includes("expired"))) {
+          markFailure("Este link de convite já expirou ou já foi utilizado. Solicite um novo link.");
+        } else {
+          markFailure(errorDescription || "Link de acesso inválido ou expirado. Por favor, utilize o link mais recente recebido no seu e-mail.");
+        }
+        return;
       }
 
       // 3. Trata token_hash e type (quando Supabase envia link direto de invite via OTP)
@@ -158,16 +169,7 @@ function SetPasswordContent() {
         }
       }
 
-      // 5. Verifica se já existe uma sessão ativa (seja via cookies SSR ou sessão restaurada)
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData?.session?.user) {
-          markSuccess(sessionData.session.user.email || "");
-          return;
-        }
-      } catch (sessErr) {
-        console.warn("[definir-senha] Erro getSession:", sessErr);
-      }
+
 
       // 6. Escuta evento de autenticação (hash #access_token no cliente)
       const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {

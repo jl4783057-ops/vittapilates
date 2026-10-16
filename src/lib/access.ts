@@ -46,27 +46,94 @@ export async function ensureAccountAndSendPasswordLink(opts: {
 }) {
   const admin = getSupabaseAdmin();
   const email = normalizeEmail(opts.email);
-  const existing = await findProfileByEmail(email);
+  const existingProfile = await findProfileByEmail(email);
 
-  if (!existing) {
+  // 1. Se o perfil existir, confirma se o usuário correspondente ainda existe no Auth
+  let authUserId = existingProfile?.id || null;
+  let authUserExists = false;
+
+  if (authUserId) {
+    const { data: authUserRes, error: getAuthError } = await admin.auth.admin.getUserById(authUserId);
+    if (!getAuthError && authUserRes?.user) {
+      authUserExists = true;
+    } else {
+      // Usuário foi apagado do Auth, mas o perfil antigo permaneceu
+      console.warn(`[access] Perfil ${authUserId} existe mas usuário Auth não foi encontrado. Limpando perfil antigo órfão...`);
+      await admin.from("profiles").delete().eq("id", authUserId);
+      authUserId = null;
+    }
+  }
+
+  // 2. Se não encontramos pelo profile, verifica se existe usuário no Auth com este e-mail
+  if (!authUserId) {
+    const { data: listData } = await admin.auth.admin.listUsers({ page: 1, perPage: 100 });
+    const match = listData?.users?.find((u) => u.email && normalizeEmail(u.email) === email);
+    if (match) {
+      authUserId = match.id;
+      authUserExists = true;
+      // Garante que o perfil existe
+      await admin.from("profiles").upsert({
+        id: match.id,
+        email,
+        name: opts.name || (match.user_metadata?.name as string) || email.split("@")[0],
+        subscription_status: "inactive",
+        access_type: "none",
+      });
+    }
+  }
+
+  // 3. Se o usuário realmente não existe no Auth, convida via inviteUserByEmail
+  if (!authUserExists || !authUserId) {
     const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
       data: { name: opts.name },
       redirectTo: opts.redirectTo,
     });
-    if (error) throw new Error(`Falha ao enviar convite: ${error.message}`);
-    return { userId: data.user.id, created: true, emailSent: true };
+
+    if (error) {
+      // Se por corrida o usuário já existia no Auth
+      if (error.message.toLowerCase().includes("already registered") || error.message.toLowerCase().includes("exists")) {
+        const { data: listData } = await admin.auth.admin.listUsers({ page: 1, perPage: 100 });
+        const match = listData?.users?.find((u) => u.email && normalizeEmail(u.email) === email);
+        if (match) {
+          authUserId = match.id;
+        } else {
+          throw new Error(`Falha ao registrar conta no Auth: ${error.message}`);
+        }
+      } else {
+        throw new Error(`Falha ao enviar convite: ${error.message}`);
+      }
+    } else if (data?.user) {
+      authUserId = data.user.id;
+      // Garante perfil
+      await admin.from("profiles").upsert({
+        id: data.user.id,
+        email,
+        name: opts.name || email.split("@")[0],
+        subscription_status: "inactive",
+        access_type: "none",
+      });
+
+      return { userId: data.user.id, created: true, emailSent: true };
+    }
   }
 
-  const { data: authUser } = await admin.auth.admin.getUserById(existing.id);
-  const neverSignedIn = !authUser.user?.last_sign_in_at;
-  if (neverSignedIn || opts.forceEmail) {
-    const { error } = await getSupabaseAnonServer().auth.resetPasswordForEmail(email, {
-      redirectTo: opts.redirectTo,
-    });
-    if (error) throw new Error(`Falha ao enviar link de senha: ${error.message}`);
-    return { userId: existing.id, created: false, emailSent: true };
+  // 4. Usuário existente no Auth: dispara link de definição/redefinição de senha
+  if (authUserId) {
+    const { data: authUser } = await admin.auth.admin.getUserById(authUserId);
+    const neverSignedIn = !authUser.user?.last_sign_in_at;
+
+    if (neverSignedIn || opts.forceEmail) {
+      const { error } = await getSupabaseAnonServer().auth.resetPasswordForEmail(email, {
+        redirectTo: opts.redirectTo,
+      });
+      if (error) throw new Error(`Falha ao enviar link de senha: ${error.message}`);
+      return { userId: authUserId, created: false, emailSent: true };
+    }
+
+    return { userId: authUserId, created: false, emailSent: false };
   }
-  return { userId: existing.id, created: false, emailSent: false };
+
+  throw new Error("Não foi possível identificar ou criar o usuário de autenticação.");
 }
 
 /** Closes expired courtesies and removes access from profiles that only had courtesy. */

@@ -265,6 +265,7 @@ function ResetPasswordContent() {
     setOtpLoading(true);
 
     try {
+      // 1. Valida o código OTP com type: "recovery"
       const { data, error: verifyErr } = await supabase.auth.verifyOtp({
         email: cleanEmail,
         token: cleanToken,
@@ -272,21 +273,46 @@ function ResetPasswordContent() {
       });
 
       if (verifyErr) {
-        console.error("[redefinir-senha] Erro verifyOtp código:", verifyErr);
+        console.error("[redefinir-senha] Erro técnico verifyOtp:", {
+          status: verifyErr.status,
+          name: verifyErr.name,
+          message: verifyErr.message,
+        });
         setOtpError("Código inválido ou expirado. Verifique o código recebido ou solicite um novo.");
         return;
       }
 
-      if (data?.session?.user || data?.user) {
-        setUserEmail(cleanEmail);
-        setHasValidSession(true);
-        setError("");
-        setOtpError("");
-      } else {
-        setOtpError("Não foi possível validar o código. Tente novamente.");
+      // 2. Requisito estrito: Não basta data.user existir; confirmar data.session
+      let activeSession = data?.session;
+
+      // Se a sessão veio no retorno do verifyOtp, persiste explicitamente para garantir cookies e storage
+      if (activeSession?.access_token && activeSession?.refresh_token) {
+        const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
+          access_token: activeSession.access_token,
+          refresh_token: activeSession.refresh_token,
+        });
+        if (!setSessionErr && setSessionData?.session) {
+          activeSession = setSessionData.session;
+        }
       }
+
+      // Reconfirma via getSession() que a sessão está pronta no cliente
+      const { data: sessionCheck } = await supabase.auth.getSession();
+      const confirmedUser = sessionCheck?.session?.user || activeSession?.user;
+
+      if (!sessionCheck?.session || !confirmedUser) {
+        console.error("[redefinir-senha] Falha de persistência de sessão após OTP.");
+        setOtpError("A validação não foi concluída porque a sessão segura não pôde ser iniciada. Por favor, solicite um novo código.");
+        return;
+      }
+
+      // 3. Libera o formulário de nova senha com segurança comprovada
+      setUserEmail(confirmedUser.email || cleanEmail);
+      setHasValidSession(true);
+      setError("");
+      setOtpError("");
     } catch (err: unknown) {
-      console.error("[redefinir-senha] Exceção verifyOtp:", err);
+      console.error("[redefinir-senha] Exceção técnica em verifyOtp:", err);
       setOtpError("Ocorreu uma falha ao validar o código. Tente novamente.");
     } finally {
       setOtpLoading(false);
@@ -320,14 +346,28 @@ function ResetPasswordContent() {
     setLoading(true);
 
     try {
-      const { error: updateError } = await supabase.auth.updateUser({
+      // 1. Confirma previamente que há uma sessão ativa e usuário autenticado
+      const { data: checkSessionData } = await supabase.auth.getSession();
+      if (!checkSessionData?.session?.user) {
+        console.error("[redefinir-senha] Sessão ausente antes de updateUser.");
+        setError("Sua sessão de redefinição expirou ou não está mais ativa. Você pode validar o código novamente ou solicitar um novo.");
+        setLoading(false);
+        // Mantém o estado coerente sem voltar silenciosamente para a tela de código
+        return;
+      }
+
+      // 2. Atualiza a senha no Supabase Auth
+      const { data: updateData, error: updateError } = await supabase.auth.updateUser({
         password: password,
       });
 
       if (updateError) {
+        console.error("[redefinir-senha] Erro técnico ao atualizar senha:", {
+          status: updateError.status,
+          message: updateError.message,
+        });
         if (updateError.message.toLowerCase().includes("session") || updateError.status === 401) {
-          setError("Sua sessão expirou. Solicite um novo link de recuperação.");
-          setHasValidSession(false);
+          setError("Sua sessão de segurança expirou. Por favor, digite o código de verificação novamente ou solicite um novo.");
         } else {
           setError(updateError.message || "Não foi possível atualizar a senha. Tente novamente.");
         }
@@ -335,15 +375,21 @@ function ResetPasswordContent() {
         return;
       }
 
-      // Faz logout preventivo para que a aluna faça login consciente com a nova senha
+      if (!updateData?.user) {
+        setError("Não foi possível confirmar a alteração da senha. Tente novamente.");
+        setLoading(false);
+        return;
+      }
+
+      // 3. Sucesso confirmado: faz signOut preventivo e exibe mensagem explícita de sucesso
       await supabase.auth.signOut().catch(() => {});
 
       setSuccess(true);
       setTimeout(() => {
         router.push("/login?sucesso=senha_redefinida");
-      }, 2000);
+      }, 2500);
     } catch (err: unknown) {
-      console.error("[redefinir-senha] Erro inesperado ao atualizar senha:", err);
+      console.error("[redefinir-senha] Exceção inesperada ao atualizar senha:", err);
       setError("Ocorreu um erro ao atualizar sua senha. Tente novamente.");
     } finally {
       setLoading(false);
@@ -506,9 +552,23 @@ function ResetPasswordContent() {
         {!checkingSession && hasValidSession === true && !success && (
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{error}</span>
+              <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3.5 rounded-xl space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span className="leading-relaxed">{error}</span>
+                </div>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHasValidSession(false);
+                      setError("");
+                    }}
+                    className="text-xs font-semibold text-[#B77D82] hover:underline cursor-pointer"
+                  >
+                    ← Digitar código novamente ou solicitar outro
+                  </button>
+                </div>
               </div>
             )}
 

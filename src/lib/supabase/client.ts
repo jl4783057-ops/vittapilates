@@ -24,6 +24,13 @@ export const supabase = isSupabaseConfigured
         persistSession: true,
         autoRefreshToken: true,
       },
+      cookieOptions: {
+        name: 'sb-auth-token',
+        maxAge: 60 * 60 * 24 * 365, // 1 ano
+        domain: '',
+        path: '/',
+        sameSite: 'lax',
+      },
     })
   : null;
 

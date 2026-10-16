@@ -6,9 +6,21 @@ const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   '';
 
+const isPrivilegedKey = Boolean(
+  supabaseAnonKey &&
+  (supabaseAnonKey.startsWith('sb_secret_') || supabaseAnonKey.startsWith('service_role'))
+);
+
+if (isPrivilegedKey && typeof window !== 'undefined') {
+  console.error(
+    '[Segurança] ERRO CRÍTICO: Chave secreta/service_role detectada no navegador! O cliente Supabase foi desativado por segurança.'
+  );
+}
+
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
   supabaseAnonKey && 
+  !isPrivilegedKey &&
   supabaseUrl !== 'https://your-project.supabase.co' &&
   !supabaseUrl.includes('placeholder')
 );

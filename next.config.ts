@@ -1,5 +1,16 @@
 import type { NextConfig } from "next";
 
+const pubKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "";
+
+if (pubKey.startsWith("sb_secret_") || pubKey.startsWith("service_role")) {
+  throw new Error(
+    "[SEGURANÇA] Chave privilegiada (sb_secret_ ou service_role) detectada em variável NEXT_PUBLIC_! O build foi interrompido para evitar exposição no navegador."
+  );
+}
+
 const nextConfig: NextConfig = {
   devIndicators: false,
   turbopack: {

@@ -2,12 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useApp } from "@/lib/store/context";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
-import { type EmailOtpType } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient, type EmailOtpType } from "@supabase/supabase-js";
 import {
   Lock,
   Eye,
@@ -35,12 +35,33 @@ function SetPasswordContent() {
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState(false);
 
-  // Estados para fluxo de validação por código OTP (anti-scanner/anti-prefetch)
+  // Estados para fluxo de validação por código OTP
   const [otpCode, setOtpCode] = useState("");
   const [inputEmail, setInputEmail] = useState("");
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState("");
-  const [sessionToken, setSessionToken] = useState<string>("");
+
+  // Instância dedicada em memória para autenticação resiliente (sem dependência de cookies em Safari/iOS)
+  const authClientRef = useRef<SupabaseClient | null>(null);
+
+  const getAuthClient = (): SupabaseClient => {
+    if (!authClientRef.current) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+      const supabaseKey =
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+        "";
+
+      authClientRef.current = createClient(supabaseUrl, supabaseKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+        },
+      });
+    }
+    return authClientRef.current;
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -69,188 +90,184 @@ function SetPasswordContent() {
       setInputEmail(queryEmail);
     }
 
-    // Se abriu diretamente para digitar o código (sem hash e sem parâmetros de auth),
-    // encerra a checagem imediatamente e exibe o formulário de código.
     const hasHashTokens = typeof window !== "undefined" && Boolean(window.location.hash);
-    const hasAuthParams = searchParams.has("code") || searchParams.has("token_hash") || searchParams.has("error");
+    const hasAuthParams =
+      searchParams.has("code") || searchParams.has("token_hash") || searchParams.has("error");
+
+    // Se abriu a página diretamente sem parâmetros de autenticação na URL:
     if (!hasHashTokens && !hasAuthParams) {
-      supabase?.auth.getSession().then(({ data }) => {
-        if (!resolved && isMounted) {
-          if (data?.session?.user) {
-            markSuccess(data.session.user.email || "");
-          } else {
-            markFailure("");
-          }
-        }
-      }).catch(() => {
-        if (!resolved && isMounted) markFailure("");
-      });
+      if (supabase) {
+        supabase.auth
+          .getSession()
+          .then(({ data }) => {
+            if (!resolved && isMounted) {
+              if (data?.session?.user) {
+                if (data.session.access_token && data.session.refresh_token) {
+                  getAuthClient()
+                    .auth.setSession({
+                      access_token: data.session.access_token,
+                      refresh_token: data.session.refresh_token,
+                    })
+                    .catch(() => {});
+                }
+                markSuccess(data.session.user.email || "");
+              } else {
+                markFailure("");
+              }
+            }
+          })
+          .catch(() => {
+            if (!resolved && isMounted) markFailure("");
+          });
+      } else {
+        markFailure("");
+      }
       return;
     }
 
+    // Safety timeout para fluxos com hash ou query
     const fallbackTimer = setTimeout(() => {
       if (!resolved && isMounted) {
-        markFailure("Nenhum link de convite válido ou sessão ativa encontrado. Por favor, solicite um novo link.");
+        markFailure(
+          "Nenhum link de convite válido ou sessão ativa encontrado. Por favor, digite o código de verificação recebido por e-mail."
+        );
       }
     }, 2500);
 
     async function validateAuth() {
       try {
-        if (!isSupabaseConfigured || !supabase) {
+        if (!isSupabaseConfigured) {
           markFailure("O serviço de autenticação não está disponível no momento.");
           return;
         }
 
-      // 1. Sessão já ativa no navegador/cookies (ex.: após redirecionamento pelo Supabase ou /api/auth/callback)
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData?.session?.user) {
-          markSuccess(sessionData.session.user.email || "");
-          return;
-        }
-      } catch (sessErr) {
-        console.warn("[definir-senha] Erro getSession:", sessErr);
-      }
+        const client = getAuthClient();
 
-      // 2. Extração de tokens no fragmento Hash (#access_token=...&refresh_token=...)
-      // Crucial para links de convite no Safari/iPhone quando o redirect do Supabase Auth usa fragmento
-      if (typeof window !== "undefined" && window.location.hash) {
-        try {
-          const rawHash = window.location.hash.replace(/^#/, "");
-          const hashParams = new URLSearchParams(rawHash);
-          const accessToken = hashParams.get("access_token");
-          const refreshToken = hashParams.get("refresh_token");
+        // 1. Fragmento Hash (#access_token=...&refresh_token=...)
+        if (typeof window !== "undefined" && window.location.hash) {
+          try {
+            const rawHash = window.location.hash.replace(/^#/, "");
+            const hashParams = new URLSearchParams(rawHash);
+            const accessToken = hashParams.get("access_token");
+            const refreshToken = hashParams.get("refresh_token");
 
-          if (accessToken && refreshToken) {
-            const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
+            if (accessToken && refreshToken) {
+              const { data: setSessionData, error: setSessionErr } = await client.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
 
-            if (!setSessionErr && setSessionData?.session?.user) {
-              markSuccess(setSessionData.session.user.email || "");
+              if (!setSessionErr && setSessionData?.session?.user) {
+                if (supabase) {
+                  supabase.auth
+                    .setSession({ access_token: accessToken, refresh_token: refreshToken })
+                    .catch(() => {});
+                }
+                markSuccess(setSessionData.session.user.email || "");
+                return;
+              }
+            }
+
+            const hashError = hashParams.get("error");
+            const hashErrorDesc = hashParams.get("error_description");
+            if (hashError) {
+              markFailure(
+                hashErrorDesc ||
+                  "Link de convite inválido ou expirado. Digite o código de verificação recebido por e-mail."
+              );
               return;
             }
+          } catch (hashErr) {
+            console.warn("[definir-senha] Falha ao processar hash da URL:", hashErr);
           }
-
-          const hashError = hashParams.get("error");
-          const hashErrorDesc = hashParams.get("error_description");
-          if (hashError) {
-            markFailure(hashErrorDesc || "Link de convite inválido ou expirado.");
-            return;
-          }
-        } catch (hashErr) {
-          console.warn("[definir-senha] Falha ao processar hash da URL:", hashErr);
         }
+
+        // 2. Erro explícito na query string (?error=...)
+        const urlError = searchParams.get("error");
+        const errorDescription = searchParams.get("error_description");
+        if (urlError) {
+          markFailure(
+            errorDescription ||
+              "Este link de convite já expirou ou é inválido. Digite o código de verificação recebido por e-mail."
+          );
+          return;
+        }
+
+        // 3. Código PKCE (?code=...)
+        const code = searchParams.get("code");
+        if (code) {
+          try {
+            const { data, error: exchangeError } = await client.auth.exchangeCodeForSession(code);
+            if (!exchangeError && data?.session?.user) {
+              if (supabase && data.session.access_token && data.session.refresh_token) {
+                supabase.auth
+                  .setSession({
+                    access_token: data.session.access_token,
+                    refresh_token: data.session.refresh_token,
+                  })
+                  .catch(() => {});
+              }
+              markSuccess(data.session.user.email || "");
+              return;
+            }
+            if (exchangeError) {
+              console.error("[definir-senha] Erro PKCE code exchange:", exchangeError);
+              markFailure("Link de convite expirado. Digite o código de verificação recebido por e-mail.");
+              return;
+            }
+          } catch (err) {
+            console.error("[definir-senha] Exceção PKCE:", err);
+          }
+        }
+
+        // 4. Token hash (?token_hash=...&type=invite)
+        const tokenHash = searchParams.get("token_hash");
+        const typeParam = (searchParams.get("type") as EmailOtpType) || "invite";
+        if (tokenHash) {
+          try {
+            const { data, error: verifyError } = await client.auth.verifyOtp({
+              token_hash: tokenHash,
+              type: typeParam,
+            });
+            if (!verifyError && data?.session?.user) {
+              if (supabase && data.session.access_token && data.session.refresh_token) {
+                supabase.auth
+                  .setSession({
+                    access_token: data.session.access_token,
+                    refresh_token: data.session.refresh_token,
+                  })
+                  .catch(() => {});
+              }
+              markSuccess(data.session.user.email || "");
+              return;
+            }
+            if (verifyError) {
+              console.error("[definir-senha] Erro verifyOtp via token_hash:", verifyError);
+              markFailure("Link de convite expirado. Digite o código de verificação recebido por e-mail.");
+              return;
+            }
+          } catch (err) {
+            console.error("[definir-senha] Exceção verifyOtp via token_hash:", err);
+          }
+        }
+
+        markFailure("");
+      } catch (unexpectedError) {
+        console.error("[definir-senha] Erro inesperado ao validar auth:", unexpectedError);
+        markFailure("Ocorreu uma falha ao validar o link de convite. Por favor, digite o código recebido.");
       }
-
-      // 3. Verifica se a URL retornou com erro explícito do Supabase
-      const urlError = searchParams.get("error");
-      const errorDescription = searchParams.get("error_description");
-      if (urlError) {
-        if (urlError === "expired_token" || urlError === "access_denied" || (errorDescription && errorDescription.includes("expired"))) {
-          markFailure("Este link de convite já expirou ou já foi utilizado. Solicite um novo link.");
-        } else {
-          markFailure(errorDescription || "Link de acesso inválido ou expirado. Por favor, utilize o link mais recente recebido no seu e-mail.");
-        }
-        return;
-      }
-
-      // 3. Trata token_hash e type (quando Supabase envia link direto de invite via OTP)
-      const tokenHash = searchParams.get("token_hash");
-      const otpType = (searchParams.get("type") as EmailOtpType) || "invite";
-      if (tokenHash) {
-        try {
-          const { data: otpData, error: otpError } = await supabase.auth.verifyOtp({
-            token_hash: tokenHash,
-            type: otpType,
-          });
-
-          if (otpError) {
-            console.error("[definir-senha] Erro verifyOtp:", otpError);
-            markFailure("Este link de convite é inválido ou já expirou. Solicite um novo link por e-mail.");
-            return;
-          }
-
-          if (otpData?.user) {
-            markSuccess(otpData.user.email || "");
-            return;
-          }
-        } catch (otpErr) {
-          console.error("[definir-senha] Exceção verifyOtp:", otpErr);
-        }
-      }
-
-      // 4. Trata código PKCE (searchParams ?code=...)
-      const code = searchParams.get("code");
-      if (code) {
-        try {
-          const { data: exchangeData, error: exchangeError } =
-            await supabase.auth.exchangeCodeForSession(code);
-          if (exchangeError) {
-            console.error("[definir-senha] Erro PKCE exchange:", exchangeError);
-            markFailure("Este link de convite é inválido ou já expirou. Solicite um novo link.");
-            return;
-          }
-          if (exchangeData?.user) {
-            markSuccess(exchangeData.user.email || "");
-            return;
-          }
-        } catch (pkceErr) {
-          console.error("[definir-senha] Exceção PKCE:", pkceErr);
-        }
-      }
-
-
-
-      // 6. Escuta evento de autenticação (hash #access_token no cliente)
-      const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-        if (session?.user && (event === "SIGNED_IN" || event === "PASSWORD_RECOVERY" || event === "USER_UPDATED" || event === "INITIAL_SESSION")) {
-          markSuccess(session.user.email || "");
-        }
-      });
-
-      // 7. Timeout de segurança para evitar loading infinito (2.5 segundos)
-      const timer = setTimeout(async () => {
-        if (resolved || !isMounted) return;
-        try {
-          const current = await supabase?.auth.getSession();
-          if (current?.data?.session?.user) {
-            markSuccess(current.data.session.user.email || "");
-            return;
-          }
-        } catch {}
-
-        markFailure(
-          "Nenhum link de convite válido ou sessão ativa encontrado. Por favor, clique no link de convite enviado para o seu e-mail."
-        );
-      }, 2500);
-
-      return () => {
-        authListener.subscription.unsubscribe();
-      };
-    } catch (unexpectedError) {
-      console.error("[definir-senha] Erro inesperado ao validar auth:", unexpectedError);
-      markFailure("Ocorreu uma falha ao validar o link de convite. Por favor, solicite um novo link.");
     }
-  }
 
-  let cleanupAuthListener: (() => void) | undefined;
-  validateAuth().then((cleanup) => {
-    if (cleanup && isMounted) {
-      cleanupAuthListener = cleanup;
-    }
-  });
+    validateAuth();
 
-  return () => {
-    isMounted = false;
-    clearTimeout(fallbackTimer);
-    if (cleanupAuthListener) {
-      cleanupAuthListener();
-    }
-  };
-}, [searchParams]);
+    return () => {
+      isMounted = false;
+      clearTimeout(fallbackTimer);
+      authClientRef.current = null;
+    };
+  }, [searchParams]);
 
+  // Validação manual por código OTP recebido no e-mail
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setOtpError("");
@@ -268,7 +285,7 @@ function SetPasswordContent() {
       return;
     }
 
-    if (!isSupabaseConfigured || !supabase) {
+    if (!isSupabaseConfigured) {
       setOtpError("Serviço de autenticação temporariamente indisponível.");
       return;
     }
@@ -276,65 +293,67 @@ function SetPasswordContent() {
     setOtpLoading(true);
 
     try {
-      // 1. Tenta validar o código OTP estritamente com type: "invite"
-      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+      const client = getAuthClient();
+
+      // 1. Tenta validar primariamente com type: "invite"
+      let verifyRes = await client.auth.verifyOtp({
         email: cleanEmail,
         token: cleanToken,
         type: "invite",
       });
 
-      if (verifyErr) {
-        console.error("[definir-senha] Erro técnico verifyOtp:", {
-          status: verifyErr.status,
-          name: verifyErr.name,
-          message: verifyErr.message,
+      // Se falhou e não foi rate-limit ou rede, tenta type: "recovery" por tolerância
+      if (verifyRes.error && verifyRes.error.status !== 429 && verifyRes.error.status !== 0) {
+        const recoveryAttempt = await client.auth.verifyOtp({
+          email: cleanEmail,
+          token: cleanToken,
+          type: "recovery",
         });
-        setOtpError("Código de convite inválido ou expirado. Verifique os dígitos recebidos por e-mail.");
-        return;
-      }
-
-      // 2. Requisito estrito: Não basta data.user existir; confirmar data.session
-      let activeSession = data?.session;
-
-      // Se a sessão veio no retorno do verifyOtp, persiste explicitamente para garantir cookies e storage
-      if (activeSession?.access_token && activeSession?.refresh_token) {
-        const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
-          access_token: activeSession.access_token,
-          refresh_token: activeSession.refresh_token,
-        });
-        if (!setSessionErr && setSessionData?.session) {
-          activeSession = setSessionData.session;
+        if (!recoveryAttempt.error && recoveryAttempt.data?.session) {
+          verifyRes = recoveryAttempt;
         }
       }
 
-      // Guarda o token de acesso da sessão validada para máxima resiliência (Safari/iOS)
-      if (activeSession?.access_token) {
-        setSessionToken(activeSession.access_token);
-      }
+      if (verifyRes.error) {
+        console.error("[definir-senha] Erro verifyOtp:", verifyRes.error.message, verifyRes.error.status);
+        const errMsg = verifyRes.error.message?.toLowerCase() || "";
+        const errCode = (verifyRes.error as { code?: string }).code || "";
 
-      // Reconfirma via getSession() que a sessão está pronta no cliente
-      const { data: sessionCheck } = await supabase.auth.getSession();
-      const confirmedUser = sessionCheck?.session?.user || activeSession?.user;
-
-      console.log("[definir-senha] Status de validação:", {
-        hasSessionData: Boolean(activeSession),
-        hasGetSession: Boolean(sessionCheck?.session),
-        userConfirmed: Boolean(confirmedUser),
-      });
-
-      if (!activeSession || !confirmedUser) {
-        console.error("[definir-senha] Falha de sessão após OTP.");
-        setOtpError("A validação não foi concluída porque a sessão segura não pôde ser iniciada. Por favor, solicite um novo código.");
+        if (verifyRes.error.status === 403 || errCode === "otp_expired" || errMsg.includes("expired")) {
+          setOtpError("Código expirado ou inválido. Verifique os dígitos ou solicite um novo acesso.");
+        } else if (verifyRes.error.status === 429 || errMsg.includes("rate limit") || errMsg.includes("too many requests")) {
+          setOtpError("Muitas tentativas em pouco tempo. Por favor, aguarde alguns minutos antes de tentar novamente.");
+        } else if (verifyRes.error.status === 0 || errMsg.includes("fetch") || errMsg.includes("network")) {
+          setOtpError("Erro de conexão com o servidor. Verifique sua internet e tente novamente.");
+        } else {
+          setOtpError("Código de convite incorreto ou expirado. Verifique os dígitos recebidos por e-mail.");
+        }
         return;
       }
 
-      // 3. Libera o formulário de definição de senha com segurança comprovada
-      setUserEmail(confirmedUser.email || cleanEmail);
+      // 2. Confirmação rigorosa: sessão e usuário devem existir no retorno
+      if (!verifyRes.data?.session?.user) {
+        setOtpError("A validação não retornou uma sessão segura. Por favor, solicite um novo código.");
+        return;
+      }
+
+      // Sincroniza sessão no cliente do navegador (cookies) para conveniência
+      if (supabase && verifyRes.data.session.access_token && verifyRes.data.session.refresh_token) {
+        supabase.auth
+          .setSession({
+            access_token: verifyRes.data.session.access_token,
+            refresh_token: verifyRes.data.session.refresh_token,
+          })
+          .catch(() => {});
+      }
+
+      // 3. Libera o formulário com a sessão ativa garantida no cliente dedicado
+      setUserEmail(verifyRes.data.session.user.email || cleanEmail);
       setHasValidSession(true);
       setError("");
       setOtpError("");
     } catch (err: unknown) {
-      console.error("[definir-senha] Exceção técnica em verifyOtp:", err);
+      console.error("[definir-senha] Exceção em verifyOtp:", err);
       setOtpError("Ocorreu uma falha ao validar o código. Tente novamente.");
     } finally {
       setOtpLoading(false);
@@ -363,117 +382,71 @@ function SetPasswordContent() {
     setLoading(true);
 
     try {
-      if (!isSupabaseConfigured || !supabase) {
-        throw new Error("Serviço de autenticação não configurado.");
+      const client = getAuthClient();
+
+      // 1. Confirma sessão ativa no cliente em memória
+      const { data: sessionData } = await client.auth.getSession();
+      const activeUser = sessionData?.session?.user;
+
+      if (!activeUser) {
+        setError(
+          "Sua sessão de segurança expirou. Por favor, digite o código de verificação novamente para revalidar."
+        );
+        setHasValidSession(false);
+        setLoading(false);
+        return;
       }
 
-      // 1. Confirma sessão ativa no cliente SDK ou reativa usando o sessionToken persistido
-      let { data: checkSessionData } = await supabase.auth.getSession();
-      
-      if (!checkSessionData?.session?.user && sessionToken) {
-        console.warn("[definir-senha] Sessão não encontrada em getSession(), restabelecendo com sessionToken...");
-        await supabase.auth.setSession({
-          access_token: sessionToken,
-          refresh_token: "",
-        }).catch(() => {});
-        const recheck = await supabase.auth.getSession();
-        checkSessionData = recheck.data;
-      }
-
-      console.log("[definir-senha] Checagem pré-update:", {
-        hasActiveSession: Boolean(checkSessionData?.session?.user),
-        hasFallbackToken: Boolean(sessionToken),
+      // 2. Atualiza a senha no Supabase Auth usando a mesma instância autenticada
+      const { data: updateData, error: updateError } = await client.auth.updateUser({
+        password: password,
       });
 
-      // 2. Atualiza a senha no Supabase Auth
-      let updateSuccess = false;
-      let lastErrorMessage = "";
+      if (updateError) {
+        console.error("[definir-senha] Erro updateUser:", updateError.message, updateError.status);
+        const updateMsg = updateError.message?.toLowerCase() || "";
 
-      // Tentativa A: via SDK oficial (supabase.auth.updateUser)
-      if (checkSessionData?.session?.user) {
-        const { data: updateData, error: updateError } = await supabase.auth.updateUser({
-          password: password,
-        });
-
-        if (!updateError && updateData?.user) {
-          updateSuccess = true;
-        } else if (updateError) {
-          console.error("[definir-senha] Tentativa SDK updateUser falhou:", {
-            status: updateError.status,
-            message: updateError.message,
-          });
-          lastErrorMessage = updateError.message;
-        }
-      }
-
-      // Tentativa B: Fallback direto via endpoint autenticado com sessionToken (independente de cookies do Safari)
-      if (!updateSuccess && sessionToken) {
-        console.warn("[definir-senha] Executando fallback seguro com sessionToken...");
-        try {
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-          const supabaseKey =
-            process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-            "";
-
-          const directRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: supabaseKey,
-              Authorization: `Bearer ${sessionToken}`,
-            },
-            body: JSON.stringify({ password }),
-          });
-
-          if (directRes.ok) {
-            const directJson = await directRes.json();
-            if (directJson?.id || directJson?.email) {
-              updateSuccess = true;
-            }
-          } else {
-            const errJson = await directRes.json().catch(() => ({}));
-            lastErrorMessage = errJson?.msg || errJson?.message || "Falha na comunicação com o servidor.";
-          }
-        } catch (fallbackErr) {
-          console.error("[definir-senha] Falha na requisição direta:", fallbackErr);
-        }
-      }
-
-      if (!updateSuccess) {
         if (
-          !lastErrorMessage ||
-          lastErrorMessage.toLowerCase().includes("session") ||
-          lastErrorMessage.toLowerCase().includes("jwt")
+          updateError.status === 401 ||
+          updateMsg.includes("session") ||
+          updateMsg.includes("jwt")
         ) {
-          setError("Sua sessão de segurança expirou. Por favor, digite o código de verificação novamente ou solicite novo convite.");
+          setError(
+            "Sua sessão de segurança expirou. Por favor, digite o código de verificação novamente para revalidar."
+          );
+          setHasValidSession(false);
+        } else if (updateMsg.includes("different") || updateMsg.includes("same")) {
+          setError("A nova senha deve ser diferente da senha anterior.");
+        } else if (updateMsg.includes("weak") || updateMsg.includes("characters")) {
+          setError("A senha deve ter no mínimo 6 caracteres.");
+        } else if (updateError.status === 429) {
+          setError("Muitas tentativas em pouco tempo. Aguarde alguns instantes antes de tentar novamente.");
         } else {
-          setError(lastErrorMessage || "Não foi possível salvar a senha. Tente novamente.");
+          setError(updateError.message || "Não foi possível definir a senha. Tente novamente.");
         }
         setLoading(false);
         return;
       }
 
-      // 3. Sucesso confirmado: faz signOut preventivo e exibe mensagem explícita de sucesso
-      await supabase.auth.signOut().catch(() => {});
+      if (!updateData?.user) {
+        setError("Não foi possível confirmar a criação da senha. Tente novamente.");
+        setLoading(false);
+        return;
+      }
+
+      // 3. Sucesso confirmado pelo servidor: limpa sessões temporárias
+      await client.auth.signOut().catch(() => {});
+      if (supabase) {
+        await supabase.auth.signOut().catch(() => {});
+      }
 
       setSuccess(true);
-
-      // Redireciona para o login após 2.5 segundos
       setTimeout(() => {
-        router.push(
-          `/login?sucesso=senha_definida${
-            userEmail ? `&email=${encodeURIComponent(userEmail)}` : ""
-          }`
-        );
+        router.push("/login?sucesso=senha_definida");
       }, 2500);
     } catch (err: unknown) {
-      console.error("[definir-senha] Exceção inesperada ao atualizar senha:", err);
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "Ocorreu um erro ao definir sua senha. Tente novamente mais tarde.";
-      setError(msg);
+      console.error("[definir-senha] Exceção inesperada ao definir senha:", err);
+      setError("Ocorreu um erro ao definir sua senha. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -481,91 +454,80 @@ function SetPasswordContent() {
 
   return (
     <div className="min-h-screen bg-[#FAF7F2] flex flex-col justify-between p-4 sm:p-6">
-      <main className="flex-1 flex items-center justify-center">
-        <div className="max-w-md w-full bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.06)] overflow-hidden">
-          {siteSettings.loginBannerUrl && (
-            <div className="relative h-32 sm:h-40 w-full overflow-hidden bg-[#F3EAE3]">
-              <img
-                src={siteSettings.loginBannerUrl}
-                alt="Banner de Acesso"
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-black/20" />
-            </div>
-          )}
+      <header className="max-w-md w-full mx-auto pt-4 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-[#B77D82] text-white flex items-center justify-center font-serif font-bold text-sm">
+            V
+          </div>
+          <span className="font-serif font-semibold text-lg text-[#292321]">
+            {siteSettings.platformName || "Vitta Pilates"}
+          </span>
+        </div>
+        <Link
+          href="/login"
+          className="text-xs text-[#827B77] hover:text-[#292321] transition font-medium"
+        >
+          Ir para Login
+        </Link>
+      </header>
 
-          <div className="p-6 sm:p-8 space-y-6">
-            <div className="text-center space-y-2">
-              {siteSettings.logoUrl ? (
-                <div className="flex justify-center mb-1">
-                  <img
-                    src={siteSettings.logoUrl}
-                    alt={siteSettings.logoText || "Logo"}
-                    className="h-14 w-auto max-w-[180px] object-contain rounded-xl"
-                  />
-                </div>
-              ) : siteSettings.logoText ? (
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#B77D82] text-white font-serif font-bold text-2xl shadow-sm mb-1">
-                  {siteSettings.logoText.charAt(0).toUpperCase()}
-                </div>
+      <main className="max-w-md w-full mx-auto my-auto py-6">
+        <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] shadow-[0_8px_30px_rgba(41,35,33,0.06)] p-6 sm:p-8 space-y-6">
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#F7EEEE] text-[#B77D82] mb-1">
+              <Lock className="w-6 h-6" />
+            </div>
+            <h1 className="text-2xl font-serif font-bold text-[#292321]">
+              Criar Minha Senha
+            </h1>
+            <p className="text-sm text-[#827B77]">
+              {userEmail ? (
+                <>
+                  Defina a senha de acesso para <strong>{userEmail}</strong>
+                </>
               ) : (
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#B77D82] text-white font-serif font-bold text-2xl shadow-sm mb-1">
-                  V
-                </div>
+                "Seja bem-vinda! Crie sua senha para acessar as aulas."
               )}
+            </p>
+          </div>
 
-              {siteSettings.logoText && (
-                <p className="text-xs uppercase tracking-widest text-[#B77D82] font-semibold">
-                  {siteSettings.logoText}
-                </p>
-              )}
-
-              <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
-                Criar Minha Senha
-              </h1>
-              <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed">
-                Bem-vinda ao Vitta Pilates! Defina sua senha pessoal para acessar
-                todas as aulas e programas da plataforma.
-              </p>
-            </div>
-
-            {/* Estado de Validação do Convite */}
+          <div className="space-y-4">
             {checkingSession ? (
-              <div className="p-8 text-center space-y-3" role="status">
-                <RefreshCw className="w-6 h-6 text-[#B77D82] animate-spin mx-auto" />
-                <p className="text-xs text-[#827B77]">
-                  Validando seu link de convite seguro...
+              <div className="py-8 flex flex-col items-center justify-center space-y-3">
+                <RefreshCw className="w-8 h-8 text-[#B77D82] animate-spin" />
+                <p className="text-xs text-[#827B77] font-medium">
+                  Validando seu convite de acesso...
                 </p>
               </div>
             ) : hasValidSession === false ? (
-              /* Formulário de código OTP */
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {error ? (
-                  <div className="bg-amber-50 border border-amber-200 text-amber-950 p-4 rounded-2xl space-y-2">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                      <h2 className="text-sm font-bold">Link pré-consumido ou expirado</h2>
+                  <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-2xl flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1 text-xs leading-relaxed">
+                      <p className="font-semibold text-amber-950">Validação por Código</p>
+                      <p>{error}</p>
                     </div>
-                    <p className="text-xs text-amber-800 leading-relaxed">
-                      Se o seu leitor de e-mail ou antivírus pré-carregou o link de convite, você pode digitar o <strong>código de verificação</strong> enviado para o seu e-mail para continuar:
-                    </p>
                   </div>
                 ) : (
                   <div className="bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77] p-4 rounded-2xl flex items-start gap-3">
                     <ShieldCheck className="w-5 h-5 text-[#B77D82] shrink-0 mt-0.5" />
                     <div className="space-y-1 text-xs leading-relaxed">
-                      <p className="font-semibold text-[#292321]">Ativação de Conta</p>
+                      <p className="font-semibold text-[#292321]">Primeiro Acesso</p>
                       <p>
-                        Digite seu e-mail e o <strong>código de verificação</strong> recebido no seu e-mail de convite para criar sua senha.
+                        Digite seu e-mail de compra e o <strong>código de verificação</strong> enviado para ativar sua conta.
                       </p>
                     </div>
                   </div>
                 )}
 
-                {/* Formulário de código OTP para convite */}
-                <form onSubmit={handleVerifyOtp} className="space-y-3.5 bg-[#FAF7F2] p-4 rounded-2xl border border-[#EADBCE]">
+                {/* Formulário de validação por código OTP */}
+                <form
+                  onSubmit={handleVerifyOtp}
+                  className="space-y-3.5 bg-[#FAF7F2] p-4 rounded-2xl border border-[#EADBCE]"
+                >
                   <p className="text-xs font-semibold text-[#292321]">
-                    Validar com o Código de 6 ou 8 dígitos do e-mail:
+                    Validar com o Código recebido por e-mail:
                   </p>
 
                   {otpError && (
@@ -591,7 +553,7 @@ function SetPasswordContent() {
 
                   <div className="space-y-1">
                     <label className="block text-[11px] font-semibold text-[#827B77] uppercase tracking-wider">
-                      Código de Verificação
+                      Código de Convite / Verificação
                     </label>
                     <input
                       type="text"
@@ -627,7 +589,7 @@ function SetPasswordContent() {
                     href="/recuperar-senha"
                     className="inline-flex items-center justify-center w-full py-2.5 px-4 rounded-full border border-[#EADBCE] bg-white text-[#827B77] hover:text-[#292321] text-xs font-medium text-center transition block"
                   >
-                    Solicitar novo link por e-mail
+                    Solicitar novo código por e-mail
                   </Link>
                 </div>
 

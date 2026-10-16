@@ -2,12 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useApp } from "@/lib/store/context";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
-import { type EmailOtpType } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient, type EmailOtpType } from "@supabase/supabase-js";
 import {
   Lock,
   Eye,
@@ -35,12 +35,33 @@ function ResetPasswordContent() {
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState(false);
 
-  // Estados para fluxo de validação direta por código OTP (anti-scanner/anti-prefetch)
+  // Estados para fluxo de validação por código OTP
   const [otpCode, setOtpCode] = useState("");
   const [inputEmail, setInputEmail] = useState("");
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState("");
-  const [sessionToken, setSessionToken] = useState<string>("");
+
+  // Instância dedicada em memória para autenticação resiliente (sem dependência de cookies em Safari/iOS)
+  const authClientRef = useRef<SupabaseClient | null>(null);
+
+  const getAuthClient = (): SupabaseClient => {
+    if (!authClientRef.current) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+      const supabaseKey =
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+        "";
+
+      authClientRef.current = createClient(supabaseUrl, supabaseKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+        },
+      });
+    }
+    return authClientRef.current;
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -69,53 +90,62 @@ function ResetPasswordContent() {
       setInputEmail(queryEmail);
     }
 
-    // Se a usuária abriu a página diretamente para digitar o código (sem hash e sem parâmetros de auth),
-    // encerra a checagem imediatamente e exibe o formulário de código, sem aguardar 2.5s de timeout.
     const hasHashTokens = typeof window !== "undefined" && Boolean(window.location.hash);
-    const hasAuthParams = searchParams.has("code") || searchParams.has("token_hash") || searchParams.has("error");
+    const hasAuthParams =
+      searchParams.has("code") || searchParams.has("token_hash") || searchParams.has("error");
+
+    // Se abriu a página diretamente sem parâmetros de autenticação na URL:
     if (!hasHashTokens && !hasAuthParams) {
-      // Checa sessão rápida e se não houver já exibe o formulário de código
-      supabase?.auth.getSession().then(({ data }) => {
-        if (!resolved && isMounted) {
-          if (data?.session?.user) {
-            markSuccess(data.session.user.email || "");
-          } else {
-            markFailure("");
-          }
-        }
-      }).catch(() => {
-        if (!resolved && isMounted) markFailure("");
-      });
+      // Verifica se já há uma sessão no cliente do navegador
+      if (supabase) {
+        supabase.auth
+          .getSession()
+          .then(({ data }) => {
+            if (!resolved && isMounted) {
+              if (data?.session?.user) {
+                // Copia a sessão para o cliente dedicado
+                if (data.session.access_token && data.session.refresh_token) {
+                  getAuthClient()
+                    .auth.setSession({
+                      access_token: data.session.access_token,
+                      refresh_token: data.session.refresh_token,
+                    })
+                    .catch(() => {});
+                }
+                markSuccess(data.session.user.email || "");
+              } else {
+                markFailure("");
+              }
+            }
+          })
+          .catch(() => {
+            if (!resolved && isMounted) markFailure("");
+          });
+      } else {
+        markFailure("");
+      }
       return;
     }
 
-    // Safety timeout: encerra o estado de carregamento em no máximo 2.5s para fluxos com hash/code
+    // Safety timeout para fluxos com hash ou query
     const fallbackTimer = setTimeout(() => {
       if (!resolved && isMounted) {
-        markFailure("Nenhum link ou sessão de recuperação ativa encontrada. Por favor, solicite um novo link.");
+        markFailure(
+          "Nenhum link ou sessão de recuperação ativa encontrada. Por favor, digite o código de verificação recebido por e-mail."
+        );
       }
     }, 2500);
 
     async function validateRecoveryAuth() {
       try {
-        if (!isSupabaseConfigured || !supabase) {
+        if (!isSupabaseConfigured) {
           markFailure("O serviço de autenticação não está disponível no momento.");
           return;
         }
 
-        // 1. Sessão já ativa no navegador/cookies (ex.: após redirecionamento pelo Supabase ou /api/auth/callback)
-        try {
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (sessionData?.session?.user) {
-            markSuccess(sessionData.session.user.email || "");
-            return;
-          }
-        } catch (sessErr) {
-          console.warn("[redefinir-senha] Erro getSession:", sessErr);
-        }
+        const client = getAuthClient();
 
-        // 2. Extração de tokens no fragmento Hash (#access_token=...&refresh_token=...)
-        // O Supabase Auth redireciona após /auth/v1/verify com os tokens no fragmento
+        // 1. Fragmento Hash (#access_token=...&refresh_token=...)
         if (typeof window !== "undefined" && window.location.hash) {
           try {
             const rawHash = window.location.hash.replace(/^#/, "");
@@ -124,12 +154,17 @@ function ResetPasswordContent() {
             const refreshToken = hashParams.get("refresh_token");
 
             if (accessToken && refreshToken) {
-              const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
+              const { data: setSessionData, error: setSessionErr } = await client.auth.setSession({
                 access_token: accessToken,
                 refresh_token: refreshToken,
               });
 
               if (!setSessionErr && setSessionData?.session?.user) {
+                if (supabase) {
+                  supabase.auth
+                    .setSession({ access_token: accessToken, refresh_token: refreshToken })
+                    .catch(() => {});
+                }
                 markSuccess(setSessionData.session.user.email || "");
                 return;
               }
@@ -138,7 +173,10 @@ function ResetPasswordContent() {
             const hashError = hashParams.get("error");
             const hashErrorDesc = hashParams.get("error_description");
             if (hashError) {
-              markFailure(hashErrorDesc || "Link de recuperação inválido ou expirado. Por favor, solicite um novo link.");
+              markFailure(
+                hashErrorDesc ||
+                  "Link de recuperação inválido ou expirado. Digite o código de verificação recebido por e-mail."
+              );
               return;
             }
           } catch (hashErr) {
@@ -146,99 +184,90 @@ function ResetPasswordContent() {
           }
         }
 
-        // 3. Erro explícito retornado na query string da URL (?error=...)
+        // 2. Erro explícito na query string (?error=...)
         const urlError = searchParams.get("error");
         const errorDescription = searchParams.get("error_description");
         if (urlError) {
-          if (
-            urlError === "expired_token" ||
-            urlError === "access_denied" ||
-            (errorDescription && errorDescription.includes("expired"))
-          ) {
-            markFailure("Este link de recuperação já expirou ou já foi utilizado. Solicite um novo link.");
-          } else {
-            markFailure(errorDescription || "Link de recuperação inválido ou expirado. Solicite um novo link.");
-          }
+          markFailure(
+            errorDescription ||
+              "Este link de recuperação já expirou ou é inválido. Digite o código de verificação recebido por e-mail."
+          );
           return;
         }
 
-      // 3. Troca de código PKCE (?code=...)
-      const code = searchParams.get("code");
-      if (code) {
-        try {
-          const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          if (exchangeError) {
-            console.error("[redefinir-senha] Erro PKCE code exchange:", exchangeError);
-            markFailure("Link de recuperação expirado ou inválido. Por favor, solicite um novo link.");
-            return;
+        // 3. Código PKCE (?code=...)
+        const code = searchParams.get("code");
+        if (code) {
+          try {
+            const { data, error: exchangeError } = await client.auth.exchangeCodeForSession(code);
+            if (!exchangeError && data?.session?.user) {
+              if (supabase && data.session.access_token && data.session.refresh_token) {
+                supabase.auth
+                  .setSession({
+                    access_token: data.session.access_token,
+                    refresh_token: data.session.refresh_token,
+                  })
+                  .catch(() => {});
+              }
+              markSuccess(data.session.user.email || "");
+              return;
+            }
+            if (exchangeError) {
+              console.error("[redefinir-senha] Erro PKCE code exchange:", exchangeError);
+              markFailure("Link de recuperação expirado. Digite o código de verificação recebido por e-mail.");
+              return;
+            }
+          } catch (err) {
+            console.error("[redefinir-senha] Exceção PKCE:", err);
           }
-          if (data?.session?.user) {
-            markSuccess(data.session.user.email || "");
-            return;
-          }
-        } catch (err) {
-          console.error("[redefinir-senha] Exceção PKCE:", err);
         }
+
+        // 4. Token hash (?token_hash=...&type=recovery)
+        const tokenHash = searchParams.get("token_hash");
+        const typeParam = (searchParams.get("type") as EmailOtpType) || "recovery";
+        if (tokenHash) {
+          try {
+            const { data, error: verifyError } = await client.auth.verifyOtp({
+              token_hash: tokenHash,
+              type: typeParam,
+            });
+            if (!verifyError && data?.session?.user) {
+              if (supabase && data.session.access_token && data.session.refresh_token) {
+                supabase.auth
+                  .setSession({
+                    access_token: data.session.access_token,
+                    refresh_token: data.session.refresh_token,
+                  })
+                  .catch(() => {});
+              }
+              markSuccess(data.session.user.email || "");
+              return;
+            }
+            if (verifyError) {
+              console.error("[redefinir-senha] Erro verifyOtp via token_hash:", verifyError);
+              markFailure("Link de recuperação expirado. Digite o código de verificação recebido por e-mail.");
+              return;
+            }
+          } catch (err) {
+            console.error("[redefinir-senha] Exceção verifyOtp via token_hash:", err);
+          }
+        }
+
+        markFailure("");
+      } catch (unexpectedError) {
+        console.error("[redefinir-senha] Erro inesperado ao validar auth:", unexpectedError);
+        markFailure("Ocorreu uma falha ao validar o link de recuperação. Por favor, digite o código recebido.");
       }
-
-      // 4. Token hash OTP (?token_hash=...&type=recovery)
-      const tokenHash = searchParams.get("token_hash");
-      const typeParam = (searchParams.get("type") as EmailOtpType) || "recovery";
-      if (tokenHash) {
-        try {
-          const { data, error: verifyError } = await supabase.auth.verifyOtp({
-            token_hash: tokenHash,
-            type: typeParam,
-          });
-          if (verifyError) {
-            console.error("[redefinir-senha] Erro verifyOtp:", verifyError);
-            markFailure("Link de recuperação expirado ou inválido. Solicite um novo link.");
-            return;
-          }
-          if (data?.session?.user) {
-            markSuccess(data.session.user.email || "");
-            return;
-          }
-        } catch (err) {
-          console.error("[redefinir-senha] Exceção verifyOtp:", err);
-        }
-      }
-
-
-
-      // 6. Listener de auth caso o Supabase conclua parsing assíncrono
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange((event, session) => {
-        if (session?.user && (event === "SIGNED_IN" || event === "PASSWORD_RECOVERY" || event === "INITIAL_SESSION")) {
-          markSuccess(session.user.email || "");
-        }
-      });
-
-      return () => {
-        subscription.unsubscribe();
-      };
-    } catch (unexpectedError) {
-      console.error("[redefinir-senha] Erro inesperado ao validar auth:", unexpectedError);
-      markFailure("Ocorreu uma falha ao validar o link de recuperação. Por favor, solicite um novo link.");
     }
-  }
 
-  let cleanupAuthListener: (() => void) | undefined;
-  validateRecoveryAuth().then((cleanup) => {
-    if (cleanup && isMounted) {
-      cleanupAuthListener = cleanup;
-    }
-  });
+    validateRecoveryAuth();
 
-  return () => {
-    isMounted = false;
-    clearTimeout(fallbackTimer);
-    if (cleanupAuthListener) {
-      cleanupAuthListener();
-    }
-  };
-}, [searchParams]);
+    return () => {
+      isMounted = false;
+      clearTimeout(fallbackTimer);
+      authClientRef.current = null;
+    };
+  }, [searchParams]);
 
   // Validação manual por código OTP recebido no e-mail
   const handleVerifyOtp = async (e: React.FormEvent) => {
@@ -258,7 +287,7 @@ function ResetPasswordContent() {
       return;
     }
 
-    if (!isSupabaseConfigured || !supabase) {
+    if (!isSupabaseConfigured) {
       setOtpError("Serviço de autenticação temporariamente indisponível.");
       return;
     }
@@ -266,65 +295,55 @@ function ResetPasswordContent() {
     setOtpLoading(true);
 
     try {
-      // 1. Valida o código OTP com type: "recovery"
-      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+      const client = getAuthClient();
+
+      // 1. Valida o código OTP com type: "recovery" diretamente no cliente em memória
+      const { data, error: verifyErr } = await client.auth.verifyOtp({
         email: cleanEmail,
         token: cleanToken,
         type: "recovery",
       });
 
       if (verifyErr) {
-        console.error("[redefinir-senha] Erro técnico verifyOtp:", {
-          status: verifyErr.status,
-          name: verifyErr.name,
-          message: verifyErr.message,
-        });
-        setOtpError("Código inválido ou expirado. Verifique o código recebido ou solicite um novo.");
-        return;
-      }
+        console.error("[redefinir-senha] Erro verifyOtp:", verifyErr.message, verifyErr.status);
+        const errMsg = verifyErr.message?.toLowerCase() || "";
+        const errCode = (verifyErr as { code?: string }).code || "";
 
-      // 2. Requisito estrito: Não basta data.user existir; confirmar data.session
-      let activeSession = data?.session;
-
-      // Se a sessão veio no retorno do verifyOtp, persiste explicitamente para garantir cookies e storage
-      if (activeSession?.access_token && activeSession?.refresh_token) {
-        const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
-          access_token: activeSession.access_token,
-          refresh_token: activeSession.refresh_token,
-        });
-        if (!setSessionErr && setSessionData?.session) {
-          activeSession = setSessionData.session;
+        if (verifyErr.status === 403 || errCode === "otp_expired" || errMsg.includes("expired")) {
+          setOtpError("Código expirado ou inválido. Por favor, verifique os dígitos ou solicite um novo código.");
+        } else if (verifyErr.status === 429 || errMsg.includes("rate limit") || errMsg.includes("too many requests")) {
+          setOtpError("Muitas tentativas em pouco tempo. Por favor, aguarde alguns minutos antes de tentar novamente.");
+        } else if (verifyErr.status === 0 || errMsg.includes("fetch") || errMsg.includes("network")) {
+          setOtpError("Erro de conexão com o servidor. Verifique sua internet e tente novamente.");
+        } else {
+          setOtpError("Código de verificação incorreto ou expirado. Verifique os dígitos recebidos por e-mail.");
         }
-      }
-
-      // Guarda o token de acesso da sessão validada para máxima resiliência (Safari/iOS)
-      if (activeSession?.access_token) {
-        setSessionToken(activeSession.access_token);
-      }
-
-      // Reconfirma via getSession() que a sessão está pronta no cliente
-      const { data: sessionCheck } = await supabase.auth.getSession();
-      const confirmedUser = sessionCheck?.session?.user || activeSession?.user;
-
-      console.log("[redefinir-senha] Status de validação:", {
-        hasSessionData: Boolean(activeSession),
-        hasGetSession: Boolean(sessionCheck?.session),
-        userConfirmed: Boolean(confirmedUser),
-      });
-
-      if (!activeSession || !confirmedUser) {
-        console.error("[redefinir-senha] Falha de sessão após OTP.");
-        setOtpError("A validação não foi concluída porque a sessão segura não pôde ser iniciada. Por favor, solicite um novo código.");
         return;
       }
 
-      // 3. Libera o formulário de nova senha com segurança comprovada
-      setUserEmail(confirmedUser.email || cleanEmail);
+      // 2. Confirmação rigorosa: sessão e usuário devem existir no retorno
+      if (!data?.session?.user) {
+        setOtpError("A validação não retornou uma sessão segura. Por favor, solicite um novo código.");
+        return;
+      }
+
+      // Sincroniza sessão no cliente do navegador (cookies) para conveniência
+      if (supabase && data.session.access_token && data.session.refresh_token) {
+        supabase.auth
+          .setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          })
+          .catch(() => {});
+      }
+
+      // 3. Libera o formulário com a sessão ativa garantida no cliente dedicado
+      setUserEmail(data.session.user.email || cleanEmail);
       setHasValidSession(true);
       setError("");
       setOtpError("");
     } catch (err: unknown) {
-      console.error("[redefinir-senha] Exceção técnica em verifyOtp:", err);
+      console.error("[redefinir-senha] Exceção em verifyOtp:", err);
       setOtpError("Ocorreu uma falha ao validar o código. Tente novamente.");
     } finally {
       setOtpLoading(false);
@@ -334,11 +353,6 @@ function ResetPasswordContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-
-    if (!isSupabaseConfigured || !supabase) {
-      setError("Serviço de autenticação indisponível.");
-      return;
-    }
 
     if (!password || !confirmPassword) {
       setError("Preencha todos os campos.");
@@ -358,95 +372,63 @@ function ResetPasswordContent() {
     setLoading(true);
 
     try {
-      // 1. Confirma sessão ativa no cliente SDK ou reativa usando o sessionToken persistido
-      let { data: checkSessionData } = await supabase.auth.getSession();
-      
-      if (!checkSessionData?.session?.user && sessionToken) {
-        console.warn("[redefinir-senha] Sessão não encontrada em getSession(), restabelecendo com sessionToken...");
-        await supabase.auth.setSession({
-          access_token: sessionToken,
-          refresh_token: "",
-        }).catch(() => {});
-        const recheck = await supabase.auth.getSession();
-        checkSessionData = recheck.data;
+      const client = getAuthClient();
+
+      // 1. Confirma sessão ativa no cliente em memória
+      const { data: sessionData } = await client.auth.getSession();
+      const activeUser = sessionData?.session?.user;
+
+      if (!activeUser) {
+        setError(
+          "Sua sessão de segurança expirou. Por favor, digite o código de verificação novamente para revalidar."
+        );
+        setHasValidSession(false);
+        setLoading(false);
+        return;
       }
 
-      console.log("[redefinir-senha] Checagem pré-update:", {
-        hasActiveSession: Boolean(checkSessionData?.session?.user),
-        hasFallbackToken: Boolean(sessionToken),
+      // 2. Atualiza a senha no Supabase Auth usando a mesma instância autenticada
+      const { data: updateData, error: updateError } = await client.auth.updateUser({
+        password: password,
       });
 
-      // 2. Atualiza a senha no Supabase Auth
-      let updateSuccess = false;
-      let lastErrorMessage = "";
+      if (updateError) {
+        console.error("[redefinir-senha] Erro updateUser:", updateError.message, updateError.status);
+        const updateMsg = updateError.message?.toLowerCase() || "";
 
-      // Tentativa A: via SDK oficial (supabase.auth.updateUser)
-      if (checkSessionData?.session?.user) {
-        const { data: updateData, error: updateError } = await supabase.auth.updateUser({
-          password: password,
-        });
-
-        if (!updateError && updateData?.user) {
-          updateSuccess = true;
-        } else if (updateError) {
-          console.error("[redefinir-senha] Tentativa SDK updateUser falhou:", {
-            status: updateError.status,
-            message: updateError.message,
-          });
-          lastErrorMessage = updateError.message;
-        }
-      }
-
-      // Tentativa B: Fallback direto via endpoint autenticado com sessionToken (independente de cookies do Safari)
-      if (!updateSuccess && sessionToken) {
-        console.warn("[redefinir-senha] Executando fallback seguro com sessionToken...");
-        try {
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-          const supabaseKey =
-            process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-            "";
-
-          const directRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: supabaseKey,
-              Authorization: `Bearer ${sessionToken}`,
-            },
-            body: JSON.stringify({ password }),
-          });
-
-          if (directRes.ok) {
-            const directJson = await directRes.json();
-            if (directJson?.id || directJson?.email) {
-              updateSuccess = true;
-            }
-          } else {
-            const errJson = await directRes.json().catch(() => ({}));
-            lastErrorMessage = errJson?.msg || errJson?.message || "Falha na comunicação com o servidor.";
-          }
-        } catch (fallbackErr) {
-          console.error("[redefinir-senha] Falha na requisição direta:", fallbackErr);
-        }
-      }
-
-      if (!updateSuccess) {
         if (
-          !lastErrorMessage ||
-          lastErrorMessage.toLowerCase().includes("session") ||
-          lastErrorMessage.toLowerCase().includes("jwt")
+          updateError.status === 401 ||
+          updateMsg.includes("session") ||
+          updateMsg.includes("jwt")
         ) {
-          setError("Sua sessão de segurança expirou. Por favor, digite o código de verificação novamente ou solicite um novo.");
+          setError(
+            "Sua sessão de segurança expirou. Por favor, digite o código de verificação novamente para revalidar."
+          );
+          setHasValidSession(false);
+        } else if (updateMsg.includes("different") || updateMsg.includes("same")) {
+          setError("A nova senha deve ser diferente da senha anterior.");
+        } else if (updateMsg.includes("weak") || updateMsg.includes("characters")) {
+          setError("A senha deve ter no mínimo 6 caracteres.");
+        } else if (updateError.status === 429) {
+          setError("Muitas tentativas em pouco tempo. Aguarde alguns instantes antes de tentar novamente.");
         } else {
-          setError(lastErrorMessage || "Não foi possível atualizar a senha. Tente novamente.");
+          setError(updateError.message || "Não foi possível atualizar a senha. Tente novamente.");
         }
         setLoading(false);
         return;
       }
 
-      // 3. Sucesso confirmado: faz signOut preventivo e exibe mensagem explícita de sucesso
-      await supabase.auth.signOut().catch(() => {});
+      if (!updateData?.user) {
+        setError("Não foi possível confirmar a alteração da senha. Tente novamente.");
+        setLoading(false);
+        return;
+      }
+
+      // 3. Sucesso confirmado pelo servidor: limpa sessões temporárias
+      await client.auth.signOut().catch(() => {});
+      if (supabase) {
+        await supabase.auth.signOut().catch(() => {});
+      }
 
       setSuccess(true);
       setTimeout(() => {
@@ -492,17 +474,15 @@ function ResetPasswordContent() {
           </div>
         )}
 
-        {/* 2. Formulário de validação por código OTP (anti-scanner / recuperação direta) */}
+        {/* 2. Formulário de validação por código OTP */}
         {!checkingSession && hasValidSession === false && (
           <div className="space-y-5">
             {error ? (
               <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-2xl flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div className="space-y-1 text-xs leading-relaxed">
-                  <p className="font-semibold text-amber-950">Link pré-consumido ou expirado</p>
-                  <p>
-                    Por segurança contra antivírus e leitores automáticos de e-mail, digite o <strong>código de verificação</strong> enviado para o seu e-mail para continuar.
-                  </p>
+                  <p className="font-semibold text-amber-950">Validação por Código</p>
+                  <p>{error}</p>
                 </div>
               </div>
             ) : (
@@ -520,7 +500,7 @@ function ResetPasswordContent() {
             {/* Formulário de validação por código OTP */}
             <form onSubmit={handleVerifyOtp} className="space-y-3.5 bg-[#FAF7F2] p-4 rounded-2xl border border-[#EADBCE]">
               <p className="text-xs font-semibold text-[#292321]">
-                Validar com o Código de 6 ou 8 dígitos do e-mail:
+                Validar com o Código recebido por e-mail:
               </p>
 
               {otpError && (
@@ -579,7 +559,7 @@ function ResetPasswordContent() {
                 href="/recuperar-senha"
                 className="w-full py-2.5 px-4 rounded-full border border-[#EADBCE] bg-white text-[#827B77] hover:text-[#292321] text-xs font-medium text-center transition block"
               >
-                Solicitar um Novo Link ou Código
+                Solicitar um Novo Código por E-mail
               </Link>
               <Link
                 href="/login"

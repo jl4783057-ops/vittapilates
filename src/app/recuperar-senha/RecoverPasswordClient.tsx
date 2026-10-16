@@ -106,7 +106,7 @@ export function RecoverPasswordClient() {
             Recuperar Senha
           </h1>
           <p className="text-sm text-[#827B77]">
-            Digite seu e-mail cadastrado para receber o link seguro de redefinição.
+            Digite seu e-mail cadastrado para receber o código de verificação.
           </p>
         </div>
 
@@ -117,7 +117,7 @@ export function RecoverPasswordClient() {
           </div>
         )}
 
-        {/* CENÁRIO 1: E-MAIL ENCONTRADO E LINK DISPARADO */}
+        {/* CENÁRIO 1: E-MAIL ENCONTRADO E CÓDIGO DISPARADO */}
         {status === "sent" && (
           <div className="bg-[#FAF7F2] border border-[#EADBCE] p-5 rounded-2xl text-center space-y-3">
             <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
@@ -125,18 +125,24 @@ export function RecoverPasswordClient() {
               Solicitação recebida!
             </h2>
             <p className="text-xs text-[#827B77] leading-relaxed">
-              Se este e-mail estiver cadastrado, enviaremos um link para redefinir sua senha. Verifique sua caixa de entrada e o spam.
+              Se este e-mail estiver cadastrado, enviaremos o código de verificação para redefinir sua senha. Verifique sua caixa de entrada e o spam.
             </p>
             <div className="p-3 bg-white rounded-xl border border-[#EADBCE] text-xs text-[#292321] font-medium break-all">
               {email}
             </div>
             <p className="text-[11px] text-[#827B77] leading-normal">
-              O link é válido por tempo limitado. Se não receber em alguns minutos, confirme se digitou o e-mail correto ou solicite ajuda ao suporte.
+              O código é válido por tempo limitado. Quando receber o e-mail com o código, clique no botão abaixo para criar sua nova senha.
             </p>
             <div className="pt-2 flex flex-col gap-2">
               <Link
+                href={`/redefinir-senha?email=${encodeURIComponent(email)}`}
+                className="w-full py-3 px-5 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-medium text-xs text-center transition shadow-sm hover:shadow"
+              >
+                Digitar código e redefinir senha
+              </Link>
+              <Link
                 href="/login"
-                className="w-full py-3 px-5 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-medium text-xs text-center transition"
+                className="w-full py-2.5 px-5 rounded-full border border-[#EADBCE] text-[#827B77] hover:text-[#292321] hover:bg-white text-xs font-medium text-center transition"
               >
                 Voltar à tela de login
               </Link>
@@ -220,7 +226,7 @@ export function RecoverPasswordClient() {
                   Verificando e enviando...
                 </>
               ) : (
-                "ENVIAR LINK DE RECUPERAÇÃO"
+                "ENVIAR CÓDIGO DE RECUPERAÇÃO"
               )}
             </button>
           </form>

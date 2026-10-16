@@ -3,41 +3,111 @@
 import React from "react";
 import Link from "next/link";
 import { useApp } from "@/lib/store/context";
-import { User as UserIcon } from "lucide-react";
+import { User as UserIcon, ChevronLeft } from "lucide-react";
 
-export function StudentHeader() {
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
+
+interface StudentHeaderProps {
+  showBack?: boolean;
+  backHref?: string;
+  onBack?: () => void;
+}
+
+export function StudentHeader({ showBack, backHref, onBack }: StudentHeaderProps = {}) {
   const { siteSettings, currentUser } = useApp();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Determinar automaticamente o botão voltar se não fornecido explicitamente
+  let resolvedShowBack = showBack;
+  let resolvedBackHref = backHref;
+  let resolvedOnBack = onBack;
+
+  if (resolvedShowBack === undefined) {
+    if (pathname?.startsWith("/aluna/aula/")) {
+      resolvedShowBack = true;
+      resolvedBackHref = "/aluna/programas";
+    } else if (pathname === "/aluna/programas") {
+      const cat = searchParams?.get("categoria");
+      const sub = searchParams?.get("subcategoria");
+      if (sub && cat) {
+        resolvedShowBack = true;
+        resolvedBackHref = `/aluna/programas?categoria=${cat}`;
+      } else if (cat) {
+        resolvedShowBack = true;
+        resolvedBackHref = "/aluna/programas";
+      }
+    }
+  }
 
   return (
-    <header className="sticky top-0 z-40 bg-[#FAF7F2]/90 backdrop-blur-md border-b border-[#EADBCE]/80 px-4 py-3">
-      <div className="max-w-lg mx-auto flex items-center justify-between">
-        <Link href="/aluna" className="flex items-center group py-0.5" aria-label="Página inicial Vitta Pilates">
-          {siteSettings.logoUrl ? (
-            <img
-              src={siteSettings.logoUrl}
-              alt={siteSettings.logoText || "Logo"}
-              className="h-8 sm:h-9 w-auto max-w-[170px] sm:max-w-[210px] object-contain transition-transform group-hover:scale-[1.02]"
-            />
-          ) : siteSettings.logoText ? (
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-[#B77D82] text-white flex items-center justify-center font-serif font-bold text-sm shadow-sm group-hover:scale-105 transition-transform">
-                {siteSettings.logoText.charAt(0).toUpperCase()}
-              </div>
-              <span className="font-serif font-bold text-lg tracking-tight text-[#292321]">
-                {siteSettings.logoText}
-              </span>
-            </div>
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-[#B77D82] text-white flex items-center justify-center font-serif font-bold text-sm shadow-sm group-hover:scale-105 transition-transform">
-              V
-            </div>
+    <header className="sticky top-0 z-40 bg-[#FAF7F2]/95 backdrop-blur-md border-b border-[#EADBCE]/70 px-4 sm:px-6 py-3 transition-colors">
+      <div className="max-w-xl md:max-w-4xl lg:max-w-5xl mx-auto flex items-center justify-between relative">
+        {/* Lado esquerdo: Botão Voltar quando aplicável, ou espaço vazio para balancear o avatar */}
+        <div className="w-10 flex items-center justify-start">
+          {resolvedShowBack && (
+            resolvedOnBack ? (
+              <button
+                type="button"
+                onClick={resolvedOnBack}
+                className="w-9 h-9 rounded-full bg-white/90 border border-[#EADBCE] text-[#292321] hover:text-[#B77D82] hover:bg-white flex items-center justify-center transition shadow-2xs cursor-pointer"
+                aria-label="Voltar"
+              >
+                <ChevronLeft className="w-5 h-5 stroke-[2.2]" />
+              </button>
+            ) : resolvedBackHref ? (
+              <Link
+                href={resolvedBackHref}
+                className="w-9 h-9 rounded-full bg-white/90 border border-[#EADBCE] text-[#292321] hover:text-[#B77D82] hover:bg-white flex items-center justify-center transition shadow-2xs"
+                aria-label="Voltar"
+              >
+                <ChevronLeft className="w-5 h-5 stroke-[2.2]" />
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="w-9 h-9 rounded-full bg-white/90 border border-[#EADBCE] text-[#292321] hover:text-[#B77D82] hover:bg-white flex items-center justify-center transition shadow-2xs cursor-pointer"
+                aria-label="Voltar"
+              >
+                <ChevronLeft className="w-5 h-5 stroke-[2.2]" />
+              </button>
+            )
           )}
-        </Link>
+        </div>
 
-        <div className="flex items-center gap-3">
+        {/* Centro: Logo Vitta Pilates cadastrada */}
+        <div className="flex-1 flex items-center justify-center">
+          <Link href="/aluna" className="flex items-center group py-0.5" aria-label="Página inicial Vitta Pilates">
+            {siteSettings.logoUrl ? (
+              <img
+                src={siteSettings.logoUrl}
+                alt={siteSettings.logoText || "Vitta Pilates"}
+                className="h-7 sm:h-8 w-auto max-w-[160px] sm:max-w-[200px] object-contain transition-transform group-hover:scale-[1.02]"
+              />
+            ) : siteSettings.logoText ? (
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-[#B77D82] text-white flex items-center justify-center font-serif font-bold text-sm shadow-xs group-hover:scale-105 transition-transform">
+                  {siteSettings.logoText.charAt(0).toUpperCase()}
+                </div>
+                <span className="font-serif font-bold text-lg tracking-wider text-[#292321]">
+                  {siteSettings.logoText}
+                </span>
+              </div>
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-[#B77D82] text-white flex items-center justify-center font-serif font-bold text-sm shadow-xs group-hover:scale-105 transition-transform">
+                V
+              </div>
+            )}
+          </Link>
+        </div>
+
+        {/* Lado direito: Avatar da aluna com borda delicada */}
+        <div className="w-10 flex items-center justify-end">
           <Link
             href="/aluna/perfil"
-            className="w-8 h-8 rounded-full border border-[#EADBCE] overflow-hidden bg-[#F3EAE3] flex items-center justify-center hover:ring-2 hover:ring-[#B77D82]/40 transition"
+            className="w-9 h-9 rounded-full border border-[#EADBCE] overflow-hidden bg-[#F3EAE3] flex items-center justify-center hover:ring-2 hover:ring-[#B77D82]/40 transition shadow-2xs"
             title="Meu Perfil"
           >
             {currentUser?.avatarUrl ? (

@@ -27,7 +27,7 @@ export function StudentLayoutClient({ children, initialLessons }: StudentLayoutC
         <StudentHeader />
       </Suspense>
 
-      <main className="flex-1 max-w-lg mx-auto w-full px-4 pt-3 pb-24">
+      <main className="flex-1 max-w-xl md:max-w-4xl lg:max-w-5xl mx-auto w-full px-4 sm:px-6 pt-3 pb-28 sm:pb-32">
         <Suspense
           fallback={
             <div className="p-8 text-center text-xs text-[#827B77]">

@@ -42,14 +42,15 @@ export async function GET() {
       .select("*")
       .order("display_order", { ascending: true });
 
-    if (error || !data || data.length === 0) {
-      return NextResponse.json({ configured: true, subcategories: INITIAL_SUBCATEGORIES }, { headers: { "Cache-Control": "no-store" } });
+    if (error) {
+      console.error("Erro ao listar subcategorias do Supabase:", error.message);
+      return NextResponse.json({ configured: true, subcategories: [] }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    return NextResponse.json({ configured: true, subcategories: data.map(mapDbToSubcategory) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ configured: true, subcategories: (data || []).map(mapDbToSubcategory) }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("Erro ao listar subcategorias:", err);
-    return NextResponse.json({ configured: false, subcategories: INITIAL_SUBCATEGORIES }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ configured: false, subcategories: [] }, { headers: { "Cache-Control": "no-store" } });
   }
 }
 

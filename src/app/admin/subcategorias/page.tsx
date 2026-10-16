@@ -13,35 +13,19 @@ import {
   EyeOff,
   X,
   ImageIcon,
+  AlertCircle,
 } from "lucide-react";
 
 export default function AdminSubcategoriesPage() {
-  const { categories, subcategories, addSubcategory, updateSubcategory, deleteSubcategory, setSubcategories } = useApp();
-
-  // Carregar subcategorias salvas no Supabase
-  React.useEffect(() => {
-    let isCancelled = false;
-    async function fetchSubcategories() {
-      try {
-        const res = await fetch("/api/admin/subcategories");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!isCancelled && Array.isArray(data.subcategories) && data.subcategories.length > 0) {
-          setSubcategories(data.subcategories);
-        }
-      } catch (err) {
-        console.warn("Aviso ao carregar subcategorias no painel admin:", err);
-      }
-    }
-    fetchSubcategories();
-    return () => {
-      isCancelled = true;
-    };
-  }, [setSubcategories]);
+  const { categories, subcategories, setSubcategories } = useApp();
 
   const [filterCat, setFilterCat] = useState<string>("todas");
   const [editingSub, setEditingSub] = useState<Subcategory | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
   const [formData, setFormData] = useState({
     name: "",
     slug: "",
@@ -52,12 +36,31 @@ export default function AdminSubcategoriesPage() {
     published: true,
   });
 
+  // Carregar subcategorias salvas no Supabase
+  const loadSubcategories = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/subcategories");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.subcategories)) {
+        setSubcategories(data.subcategories);
+      }
+    } catch (err) {
+      console.warn("Aviso ao carregar subcategorias no painel admin:", err);
+    }
+  }, [setSubcategories]);
+
+  React.useEffect(() => {
+    loadSubcategories();
+  }, [loadSubcategories]);
+
   const filtered = subcategories.filter((s) => {
     if (filterCat !== "todas" && s.categoryId !== filterCat) return false;
     return true;
   });
 
   const handleOpenCreate = () => {
+    setModalError(null);
     setFormData({
       name: "",
       slug: "",
@@ -71,6 +74,7 @@ export default function AdminSubcategoriesPage() {
   };
 
   const handleOpenEdit = (sub: Subcategory) => {
+    setModalError(null);
     setEditingSub(sub);
     setFormData({
       name: sub.name,
@@ -83,41 +87,135 @@ export default function AdminSubcategoriesPage() {
     });
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isCreating) {
-      const newSub: Subcategory = {
-        id: `sub-${Date.now()}`,
-        name: formData.name.trim(),
-        slug: formData.slug.trim() || formData.name.toLowerCase().replace(/\s+/g, "-"),
-        categoryId: formData.categoryId,
-        description: formData.description,
-        imageUrl: formData.imageUrl || undefined,
-        order: Number(formData.order),
-        published: formData.published,
-      };
-      addSubcategory(newSub);
-      setIsCreating(false);
-    } else if (editingSub) {
-      updateSubcategory(editingSub.id, {
-        name: formData.name.trim(),
-        slug: formData.slug.trim(),
-        categoryId: formData.categoryId,
-        description: formData.description,
-        imageUrl: formData.imageUrl || undefined,
-        order: Number(formData.order),
-        published: formData.published,
-      });
-      setEditingSub(null);
+    if (!formData.name.trim()) {
+      setModalError("O nome da subcategoria é obrigatório.");
+      return;
+    }
+
+    setIsSaving(true);
+    setModalError(null);
+    setToastMessage(null);
+
+    const slug = formData.slug.trim() || formData.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+
+    try {
+      if (isCreating) {
+        const newSub: Subcategory = {
+          id: `sub-${Date.now()}`,
+          name: formData.name.trim(),
+          slug,
+          categoryId: formData.categoryId,
+          description: formData.description.trim() || undefined,
+          imageUrl: formData.imageUrl || undefined,
+          order: Number(formData.order) || 1,
+          published: formData.published,
+        };
+
+        const res = await fetch("/api/admin/subcategories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newSub),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || "Erro ao salvar nova subcategoria no Supabase.");
+        }
+
+        setIsCreating(false);
+        setToastMessage({ type: "success", text: `Subcategoria "${newSub.name}" criada com sucesso no Supabase!` });
+      } else if (editingSub) {
+        const updatedSub: Subcategory = {
+          ...editingSub,
+          name: formData.name.trim(),
+          slug,
+          categoryId: formData.categoryId,
+          description: formData.description.trim() || undefined,
+          imageUrl: formData.imageUrl || undefined,
+          order: Number(formData.order) || 1,
+          published: formData.published,
+        };
+
+        const res = await fetch("/api/admin/subcategories", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedSub),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || "Erro ao atualizar subcategoria no Supabase.");
+        }
+
+        setEditingSub(null);
+        setToastMessage({ type: "success", text: `Subcategoria "${updatedSub.name}" atualizada com sucesso no Supabase!` });
+      }
+
+      await loadSubcategories();
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err) {
+      console.error("Falha ao salvar subcategoria:", err);
+      setModalError(err instanceof Error ? err.message : "Erro ao salvar subcategoria.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const togglePublish = (sub: Subcategory) => {
-    updateSubcategory(sub.id, { published: !sub.published });
+  const handleDeleteSub = async (sub: Subcategory) => {
+    if (!confirm(`Tem certeza que deseja excluir a subcategoria "${sub.name}"?`)) return;
+
+    try {
+      const res = await fetch(`/api/admin/subcategories?id=${encodeURIComponent(sub.id)}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Erro ao excluir subcategoria no banco.");
+      }
+
+      setToastMessage({ type: "success", text: `Subcategoria "${sub.name}" excluída com sucesso.` });
+      await loadSubcategories();
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (err) {
+      setToastMessage({ type: "error", text: err instanceof Error ? err.message : "Erro ao excluir subcategoria." });
+    }
+  };
+
+  const togglePublish = async (sub: Subcategory) => {
+    try {
+      const updated = { ...sub, published: !sub.published };
+      const res = await fetch("/api/admin/subcategories", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      });
+      if (res.ok) {
+        await loadSubcategories();
+      }
+    } catch (err) {
+      console.warn("Aviso ao alternar publicação da subcategoria:", err);
+    }
   };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in">
+      {toastMessage && (
+        <div
+          className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center justify-between shadow-xs ${
+            toastMessage.type === "success"
+              ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+              : "bg-rose-50 text-rose-800 border border-rose-200"
+          }`}
+        >
+          <span>{toastMessage.text}</span>
+          <button onClick={() => setToastMessage(null)} className="text-[#827B77] hover:text-[#292321]">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#EADBCE]">
         <div>
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
@@ -236,11 +334,7 @@ export default function AdminSubcategoriesPage() {
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => {
-                            if (confirm(`Excluir a subcategoria "${sub.name}"?`)) {
-                              deleteSubcategory(sub.id);
-                            }
-                          }}
+                          onClick={() => handleDeleteSub(sub)}
                           className="p-1.5 rounded-lg border border-[#EADBCE] text-rose-600 hover:bg-rose-50 transition cursor-pointer"
                           title="Excluir"
                         >
@@ -274,6 +368,13 @@ export default function AdminSubcategoriesPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {modalError && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 text-xs p-3 rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{modalError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleSave} className="space-y-3.5">
               <div className="space-y-1">
@@ -380,9 +481,10 @@ export default function AdminSubcategoriesPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold shadow-xs cursor-pointer"
+                  disabled={isSaving}
+                  className="px-6 py-2 rounded-xl bg-[#B77D82] hover:bg-[#A3676C] disabled:opacity-60 text-white text-xs font-semibold shadow-xs cursor-pointer transition flex items-center gap-1.5"
                 >
-                  Salvar
+                  {isSaving ? "Salvando no Supabase..." : "Salvar Subcategoria"}
                 </button>
               </div>
             </form>

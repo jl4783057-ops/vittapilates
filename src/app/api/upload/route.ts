@@ -66,25 +66,53 @@ export async function POST(request: NextRequest) {
 
     let publicUrl: string;
 
-    // Se o Vercel Blob estiver configurado (BLOB_READ_WRITE_TOKEN), envia diretamente para o bucket vittapilates-blob
-    if (process.env.BLOB_READ_WRITE_TOKEN) {
-      const { put } = await import("@vercel/blob");
-      const blob = await put(`images/${uniqueFileName}`, buffer, {
-        access: "public",
-        contentType: format.mime,
-      });
-      publicUrl = blob.url;
-    } else if (process.env.NODE_ENV === "development") {
-      // Fallback em ambiente de desenvolvimento local caso a variável BLOB_READ_WRITE_TOKEN ainda não tenha sido puxada localmente
+    // 1. Supabase Storage (Bucket oficial 'media' criado e configurado)
+    const { isSupabaseAdminConfigured, getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    if (isSupabaseAdminConfigured) {
+      const admin = getSupabaseAdmin();
+      const storagePath = `uploads/${uniqueFileName}`;
+      const { error: uploadError } = await admin.storage
+        .from("media")
+        .upload(storagePath, buffer, {
+          contentType: format.mime,
+          upsert: true,
+        });
+
+      if (!uploadError) {
+        const { data: publicData } = admin.storage.from("media").getPublicUrl(storagePath);
+        publicUrl = publicData.publicUrl;
+      } else {
+        console.warn("Falha no upload do Supabase Storage, tentando fallback:", uploadError.message);
+      }
+    }
+
+    // 2. Fallback para Vercel Blob (se configurado com BLOB_READ_WRITE_TOKEN)
+    if (!publicUrl! && process.env.BLOB_READ_WRITE_TOKEN) {
+      try {
+        const { put } = await import("@vercel/blob");
+        const blob = await put(`images/${uniqueFileName}`, buffer, {
+          access: "public",
+          contentType: format.mime,
+        });
+        publicUrl = blob.url;
+      } catch (blobErr) {
+        console.warn("Falha no upload do Vercel Blob:", blobErr);
+      }
+    }
+
+    // 3. Fallback para sistema de arquivos local em desenvolvimento
+    if (!publicUrl! && process.env.NODE_ENV === "development") {
       const uploadDir = path.join(process.cwd(), "public", "uploads");
       await fs.mkdir(uploadDir, { recursive: true });
       await fs.writeFile(path.join(uploadDir, uniqueFileName), buffer);
       publicUrl = `/uploads/${uniqueFileName}`;
-    } else {
+    }
+
+    if (!publicUrl!) {
       return NextResponse.json(
         {
           error:
-            "Vercel Blob não conectado. Certifique-se de que o Blob 'vittapilates-blob' está conectado ao projeto com a variável BLOB_READ_WRITE_TOKEN.",
+            "Não foi possível salvar o arquivo no armazenamento de mídia. Verifique as configurações de Storage do Supabase.",
         },
         { status: 503 }
       );

@@ -64,14 +64,15 @@ export async function GET(request: NextRequest) {
       .select("*")
       .order("display_order", { ascending: true });
 
-    if (error || !data || data.length === 0) {
-      return NextResponse.json({ configured: true, lessons: INITIAL_LESSONS }, { headers: { "Cache-Control": "no-store" } });
+    if (error) {
+      console.error("Erro ao listar aulas do Supabase:", error.message);
+      return NextResponse.json({ configured: true, lessons: [] }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    return NextResponse.json({ configured: true, lessons: data.map(mapDbToLesson) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ configured: true, lessons: (data || []).map(mapDbToLesson) }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("Erro ao listar aulas:", err);
-    return NextResponse.json({ configured: false, lessons: INITIAL_LESSONS }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ configured: false, lessons: [] }, { headers: { "Cache-Control": "no-store" } });
   }
 }
 

@@ -170,6 +170,7 @@ export interface SiteSettings {
   whatsappCommunityTitle: string;
   whatsappCommunitySubtitle: string;
   whatsappCommunityButtonText: string;
+  whatsappCommunityBannerUrl?: string;
   libraryHeroTitle: string;
   libraryHeroSubtitle: string;
 }

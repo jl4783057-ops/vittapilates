@@ -20,29 +20,10 @@ import {
 export default function AdminCategoriesPage() {
   const { categories, setCategories, addCategory, updateCategory, deleteCategory } = useApp();
 
-  // Carregar categorias salvas no Supabase
-  React.useEffect(() => {
-    let isCancelled = false;
-    async function fetchCategories() {
-      try {
-        const res = await fetch("/api/admin/categories");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!isCancelled && Array.isArray(data.categories) && data.categories.length > 0) {
-          setCategories(data.categories);
-        }
-      } catch (err) {
-        console.warn("Aviso ao carregar categorias no painel admin:", err);
-      }
-    }
-    fetchCategories();
-    return () => {
-      isCancelled = true;
-    };
-  }, [setCategories]);
-
   const [editingCat, setEditingCat] = useState<Category | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [toastMessage, setToastMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     slug: "",
@@ -51,6 +32,24 @@ export default function AdminCategoriesPage() {
     order: 1,
     published: true,
   });
+
+  // Carregar categorias salvas no Supabase
+  const loadCategories = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/categories");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.categories) && data.categories.length > 0) {
+        setCategories(data.categories);
+      }
+    } catch (err) {
+      console.warn("Aviso ao carregar categorias no painel admin:", err);
+    }
+  }, [setCategories]);
+
+  React.useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
 
   const handleOpenCreate = () => {
     setFormData({
@@ -76,30 +75,71 @@ export default function AdminCategoriesPage() {
     });
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isCreating) {
-      const newCat: Category = {
-        id: `cat-${Date.now()}`,
-        name: formData.name.trim(),
-        slug: formData.slug.trim() || formData.name.toLowerCase().replace(/\s+/g, "-"),
-        description: formData.description.trim(),
-        bannerUrl: formData.bannerUrl,
-        order: Number(formData.order),
-        published: formData.published,
-      };
-      addCategory(newCat);
-      setIsCreating(false);
-    } else if (editingCat) {
-      updateCategory(editingCat.id, {
-        name: formData.name.trim(),
-        slug: formData.slug.trim(),
-        description: formData.description.trim(),
-        bannerUrl: formData.bannerUrl,
-        order: Number(formData.order),
-        published: formData.published,
-      });
-      setEditingCat(null);
+    setIsSaving(true);
+    setToastMessage(null);
+
+    try {
+      if (isCreating) {
+        const newCat: Category = {
+          id: `cat-${Date.now()}`,
+          name: formData.name.trim(),
+          slug: formData.slug.trim() || formData.name.toLowerCase().replace(/\s+/g, "-"),
+          description: formData.description.trim(),
+          bannerUrl: formData.bannerUrl,
+          order: Number(formData.order),
+          published: formData.published,
+        };
+
+        const res = await fetch("/api/admin/categories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newCat),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Erro ao salvar nova categoria no Supabase.");
+        }
+
+        addCategory(newCat);
+        setIsCreating(false);
+        setToastMessage({ type: "success", text: `Categoria "${newCat.name}" criada com sucesso no Supabase!` });
+      } else if (editingCat) {
+        const updatedCat: Category = {
+          ...editingCat,
+          name: formData.name.trim(),
+          slug: formData.slug.trim(),
+          description: formData.description.trim(),
+          bannerUrl: formData.bannerUrl,
+          order: Number(formData.order),
+          published: formData.published,
+        };
+
+        const res = await fetch("/api/admin/categories", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedCat),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Erro ao atualizar categoria no Supabase.");
+        }
+
+        updateCategory(editingCat.id, updatedCat);
+        setEditingCat(null);
+        setToastMessage({ type: "success", text: `Categoria "${updatedCat.name}" e banner atualizados com sucesso!` });
+      }
+
+      await loadCategories();
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err) {
+      console.error("Falha ao salvar categoria:", err);
+      setToastMessage({ type: "error", text: err instanceof Error ? err.message : "Erro ao salvar categoria." });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -109,13 +149,28 @@ export default function AdminCategoriesPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in">
+      {toastMessage && (
+        <div
+          className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center justify-between shadow-xs ${
+            toastMessage.type === "success"
+              ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+              : "bg-rose-50 text-rose-800 border border-rose-200"
+          }`}
+        >
+          <span>{toastMessage.text}</span>
+          <button onClick={() => setToastMessage(null)} className="text-[#827B77] hover:text-[#292321]">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#EADBCE]">
         <div>
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
             Gestão de Categorias
           </h1>
           <p className="text-xs sm:text-sm text-[#827B77] mt-1">
-            Controle das 8 categorias principais do catálogo, banners e ordenação.
+            Controle das categorias do catálogo, Comunidade oficial, banners e ordenação com persistência no Supabase.
           </p>
         </div>
 
@@ -151,8 +206,15 @@ export default function AdminCategoriesPage() {
                     </div>
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="absolute top-3 left-3 bg-white/90 px-2 py-0.5 rounded-full text-[10px] font-bold text-[#292321]">
-                    Ordem: #{cat.order}
+                  <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                    <span className="bg-white/90 px-2 py-0.5 rounded-full text-[10px] font-bold text-[#292321]">
+                      Ordem: #{cat.order}
+                    </span>
+                    {cat.slug === "comunidade" && (
+                      <span className="bg-emerald-600 text-white px-2 py-0.5 rounded-full text-[10px] font-bold">
+                        Comunidade Alunas
+                      </span>
+                    )}
                   </div>
                   <div className="absolute bottom-3 left-3 right-3 text-white">
                     <h3 className="font-serif font-bold text-base leading-tight">
@@ -314,10 +376,21 @@ export default function AdminCategoriesPage() {
 
               <div className="pt-2 flex gap-2">
                 <button
-                  type="submit"
-                  className="flex-1 py-3 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C]"
+                  type="button"
+                  onClick={() => {
+                    setIsCreating(false);
+                    setEditingCat(null);
+                  }}
+                  className="px-4 py-2.5 rounded-full border border-[#EADBCE] text-xs font-semibold text-[#827B77] hover:bg-[#FAF7F2] cursor-pointer"
                 >
-                  Salvar Categoria
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="flex-1 py-3 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] disabled:opacity-60 transition cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {isSaving ? "Salvando no Supabase..." : "Salvar Categoria"}
                 </button>
               </div>
             </form>

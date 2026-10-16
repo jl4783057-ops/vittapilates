@@ -128,6 +128,17 @@ function CustomizationForm({
           </h2>
         </div>
 
+        {/* Banner de Destaque da Comunidade */}
+        <div className="pt-1">
+          <ImageUploadField
+            label="Banner de Destaque da Comunidade"
+            helperText="Selecione o banner que aparece no topo da tela de Comunidade para as alunas (JPG, PNG ou WebP até 5 MB)."
+            value={form.whatsappCommunityBannerUrl || ""}
+            onChange={(url) => setForm({ ...form, whatsappCommunityBannerUrl: url })}
+            aspectRatio="banner"
+          />
+        </div>
+
         <div className="space-y-1">
           <label className="text-[11px] font-bold uppercase text-[#827B77] block">
             Link de Convite do Grupo do WhatsApp
@@ -212,7 +223,7 @@ function CustomizationForm({
 }
 
 export default function AdminCustomizationPage() {
-  const { siteSettings, updateSiteSettings } = useApp();
+  const { siteSettings, updateSiteSettings, categories, updateCategory } = useApp();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -223,6 +234,7 @@ export default function AdminCustomizationPage() {
     siteSettings.logoUrl,
     siteSettings.loginBannerUrl,
     siteSettings.loginTitle,
+    siteSettings.whatsappCommunityBannerUrl,
   ].join("|");
 
   const handleSave = async (form: typeof siteSettings) => {
@@ -240,6 +252,20 @@ export default function AdminCustomizationPage() {
       const dataSettings = await resSettings.json().catch(() => ({}));
       if (!resSettings.ok) {
         throw new Error(dataSettings.error || "Falha ao salvar configurações no servidor.");
+      }
+
+      // Sincroniza o banner na categoria Comunidade para persistência completa
+      if (form.whatsappCommunityBannerUrl) {
+        const communityCat = categories.find((c) => c.slug === "comunidade" || c.id === "cat-comunidade");
+        if (communityCat) {
+          const updatedCat = { ...communityCat, bannerUrl: form.whatsappCommunityBannerUrl };
+          await fetch("/api/admin/categories", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatedCat),
+          }).catch(() => {});
+          updateCategory(communityCat.id, updatedCat);
+        }
       }
 
       await fetch("/api/branding", {

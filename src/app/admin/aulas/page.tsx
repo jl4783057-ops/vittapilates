@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { useApp } from "@/lib/store/context";
 import { Lesson, LessonLevel, LessonFormat, LessonEquipment, LessonStatus } from "@/types";
 import {
@@ -21,33 +21,37 @@ import {
 import ImageUploadField from "@/components/ui/ImageUploadField";
 
 export default function AdminLessonsPage() {
-  const { lessons, setLessons, categories, subcategories, addLesson, updateLesson, deleteLesson } = useApp();
+  const { lessons, setLessons, categories, subcategories } = useApp();
 
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState<string>("todas");
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Carregar todas as aulas do Supabase (inclusive rascunhos) com permissão administrativa
-  React.useEffect(() => {
-    let isCancelled = false;
-    async function fetchAdminLessons() {
-      try {
-        const res = await fetch("/api/admin/lessons");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!isCancelled && data.lessons && Array.isArray(data.lessons)) {
-          setLessons(data.lessons);
-        }
-      } catch (err) {
-        console.warn("Aviso ao carregar aulas no painel administrativo:", err);
+  const fetchAdminLessons = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/admin/lessons");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.lessons && Array.isArray(data.lessons)) {
+        setLessons(data.lessons);
       }
+    } catch (err) {
+      console.warn("Aviso ao carregar aulas no painel administrativo:", err);
+    } finally {
+      setIsLoading(false);
     }
-    fetchAdminLessons();
-    return () => {
-      isCancelled = true;
-    };
   }, [setLessons]);
+
+  React.useEffect(() => {
+    fetchAdminLessons();
+  }, [fetchAdminLessons]);
 
   const [formData, setFormData] = useState<{
     title: string;
@@ -74,8 +78,8 @@ export default function AdminLessonsPage() {
     format: "aula rápida",
     equipment: "sem equipamento",
     materials: "Tapete de Pilates (Mat)",
-    thumbnailUrl: "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=800&q=80",
-    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    thumbnailUrl: "",
+    videoUrl: "",
     order: 1,
     status: "publicado",
     tagsString: "postura, rotina da manhã",
@@ -95,6 +99,7 @@ export default function AdminLessonsPage() {
   const handleOpenCreate = () => {
     const firstCat = categories[0]?.id || "cat-1";
     const firstSub = subcategories.find((s) => s.categoryId === firstCat)?.id || "";
+    setModalError(null);
     setFormData({
       title: "",
       description: "",
@@ -105,8 +110,8 @@ export default function AdminLessonsPage() {
       format: "aula rápida",
       equipment: "sem equipamento",
       materials: "Tapete de Pilates (Mat)",
-      thumbnailUrl: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?auto=format&fit=crop&w=800&q=80",
-      videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+      thumbnailUrl: "",
+      videoUrl: "",
       order: lessons.length + 1,
       status: "publicado",
       tagsString: "postura, bem-estar",
@@ -115,6 +120,7 @@ export default function AdminLessonsPage() {
   };
 
   const handleOpenEdit = (lesson: Lesson) => {
+    setModalError(null);
     setEditingLesson(lesson);
     setFormData({
       title: lesson.title,
@@ -134,63 +140,118 @@ export default function AdminLessonsPage() {
     });
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSaving(true);
+    setModalError(null);
+
     const tags = formData.tagsString
       .split(",")
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean);
 
-    if (isCreating) {
-      const newLesson: Lesson = {
-        id: `les-${Date.now()}`,
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        categoryId: formData.categoryId,
-        subcategoryId: formData.subcategoryId || subcategories[0]?.id || "sub-1-1",
-        durationMinutes: Number(formData.durationMinutes),
-        level: formData.level,
-        format: formData.format,
-        equipment: formData.equipment,
-        materials: formData.materials,
-        thumbnailUrl: formData.thumbnailUrl,
-        videoUrl: formData.videoUrl,
-        order: Number(formData.order),
-        status: formData.status,
-        tags,
-        viewsCount: 0,
-        completionsCount: 0,
-      };
-      addLesson(newLesson);
-      setIsCreating(false);
-    } else if (editingLesson) {
-      updateLesson(editingLesson.id, {
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        categoryId: formData.categoryId,
-        subcategoryId: formData.subcategoryId,
-        durationMinutes: Number(formData.durationMinutes),
-        level: formData.level,
-        format: formData.format,
-        equipment: formData.equipment,
-        materials: formData.materials,
-        thumbnailUrl: formData.thumbnailUrl,
-        videoUrl: formData.videoUrl,
-        order: Number(formData.order),
-        status: formData.status,
-        tags,
+    const lessonPayload: Lesson = {
+      id: isCreating ? `les-${Date.now()}` : editingLesson!.id,
+      title: formData.title.trim(),
+      description: formData.description.trim(),
+      categoryId: formData.categoryId,
+      subcategoryId: formData.subcategoryId || (subcategories.find((s) => s.categoryId === formData.categoryId)?.id || "sub-1-1"),
+      durationMinutes: Number(formData.durationMinutes),
+      level: formData.level,
+      format: formData.format,
+      equipment: formData.equipment,
+      materials: formData.materials,
+      thumbnailUrl: formData.thumbnailUrl,
+      videoUrl: formData.videoUrl,
+      order: Number(formData.order),
+      status: formData.status,
+      tags,
+      viewsCount: editingLesson ? (editingLesson.viewsCount ?? 0) : 0,
+      completionsCount: editingLesson ? (editingLesson.completionsCount ?? 0) : 0,
+    };
+
+    try {
+      const res = await fetch("/api/admin/lessons", {
+        method: isCreating ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lessonPayload),
       });
+
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        throw new Error(result.error || "Erro ao salvar aula no banco de dados.");
+      }
+
+      const savedLesson: Lesson = result.lesson || lessonPayload;
+
+      if (isCreating) {
+        setLessons((prev) => [savedLesson, ...prev]);
+      } else {
+        setLessons((prev) => prev.map((l) => (l.id === savedLesson.id ? savedLesson : l)));
+      }
+
+      setIsCreating(false);
       setEditingLesson(null);
+      setFeedbackMessage({ type: "success", text: `Aula "${savedLesson.title}" salva com sucesso no Supabase!` });
+      setTimeout(() => setFeedbackMessage(null), 4000);
+    } catch (err: unknown) {
+      setModalError(err instanceof Error ? err.message : "Erro ao salvar aula.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const toggleStatus = (lesson: Lesson) => {
+  const toggleStatus = async (lesson: Lesson) => {
     const nextStatus: LessonStatus = lesson.status === "publicado" ? "rascunho" : "publicado";
-    updateLesson(lesson.id, { status: nextStatus });
+    try {
+      const updated = { ...lesson, status: nextStatus };
+      const res = await fetch("/api/admin/lessons", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      });
+      if (!res.ok) throw new Error("Erro ao atualizar status.");
+      setLessons((prev) => prev.map((l) => (l.id === lesson.id ? updated : l)));
+      setFeedbackMessage({ type: "success", text: `Status da aula alterado para "${nextStatus}".` });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    } catch {
+      setFeedbackMessage({ type: "error", text: "Não foi possível atualizar o status da aula." });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    }
+  };
+
+  const handleDelete = async (lesson: Lesson) => {
+    if (!confirm(`Excluir a aula "${lesson.title}" permanentemente do Supabase?`)) return;
+    try {
+      const res = await fetch(`/api/admin/lessons?id=${encodeURIComponent(lesson.id)}`, {
+        method: "DELETE",
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) throw new Error(result.error || "Erro ao excluir aula.");
+      setLessons((prev) => prev.filter((l) => l.id !== lesson.id));
+      setFeedbackMessage({ type: "success", text: `Aula "${lesson.title}" excluída com sucesso.` });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    } catch (err: unknown) {
+      setFeedbackMessage({ type: "error", text: err instanceof Error ? err.message : "Erro ao excluir aula." });
+      setTimeout(() => setFeedbackMessage(null), 4000);
+    }
   };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in">
+      {feedbackMessage && (
+        <div
+          className={`p-4 rounded-2xl text-xs flex items-center gap-2 transition ${
+            feedbackMessage.type === "success"
+              ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border border-rose-200 text-rose-800"
+          }`}
+        >
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{feedbackMessage.text}</span>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#EADBCE]">
         <div>
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
@@ -203,7 +264,7 @@ export default function AdminLessonsPage() {
 
         <button
           onClick={handleOpenCreate}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold shadow-xs transition"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold shadow-xs transition cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           Cadastrar Nova Aula
@@ -252,105 +313,143 @@ export default function AdminLessonsPage() {
 
       {/* Grid de Aulas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredLessons
-          .sort((a, b) => a.order - b.order)
-          .map((les) => {
-            const cat = categories.find((c) => c.id === les.categoryId);
-            const sub = subcategories.find((s) => s.id === les.subcategoryId);
+        {isLoading ? (
+          <div className="col-span-full p-12 text-center text-xs text-[#827B77] bg-white rounded-3xl border border-[#EADBCE] flex flex-col items-center justify-center gap-2">
+            <Clock className="w-5 h-5 animate-spin text-[#B77D82]" />
+            <span>Consultando catálogo de aulas no Supabase...</span>
+          </div>
+        ) : lessons.length === 0 ? (
+          <div className="col-span-full p-12 text-center bg-white rounded-3xl border border-[#EADBCE] space-y-3 shadow-2xs">
+            <div className="w-12 h-12 rounded-full bg-[#FAF7F2] border border-[#EADBCE] flex items-center justify-center mx-auto text-[#B77D82]">
+              <Video className="w-6 h-6" />
+            </div>
+            <div className="space-y-1 max-w-md mx-auto">
+              <h3 className="font-serif font-bold text-base text-[#292321]">
+                Nenhuma aula cadastrada ainda
+              </h3>
+              <p className="text-xs text-[#827B77] leading-relaxed">
+                Todas as aulas reais que você cadastrar serão salvas de forma permanente no Supabase, vinculadas às categorias e subcategorias.
+              </p>
+            </div>
+            <button
+              onClick={handleOpenCreate}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Cadastrar Primeira Aula
+            </button>
+          </div>
+        ) : filteredLessons.length === 0 ? (
+          <div className="col-span-full p-12 text-center bg-white rounded-3xl border border-[#EADBCE] space-y-2 shadow-2xs">
+            <p className="font-serif font-bold text-base text-[#292321]">
+              Nenhuma aula encontrada para os filtros selecionados.
+            </p>
+            <p className="text-xs text-[#827B77]">Tente alterar a categoria ou o termo de busca.</p>
+          </div>
+        ) : (
+          filteredLessons
+            .sort((a, b) => a.order - b.order)
+            .map((les) => {
+              const cat = categories.find((c) => c.id === les.categoryId);
+              const sub = subcategories.find((s) => s.id === les.subcategoryId);
 
-            return (
-              <div
-                key={les.id}
-                className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] overflow-hidden shadow-2xs flex flex-col justify-between hover:border-[#B77D82]/50 transition group"
-              >
-                <div>
-                  <div className="relative h-40 w-full bg-[#F3EAE3] overflow-hidden">
-                    <img
-                      src={les.thumbnailUrl}
-                      alt={les.title}
-                      className="w-full h-full object-cover group-hover:scale-102 transition duration-300"
-                    />
-                    <div className="absolute inset-0 bg-black/20" />
-                    <div className="absolute top-2.5 left-2.5 bg-white/95 px-2 py-0.5 rounded-full text-[10px] font-bold text-[#292321] shadow-xs">
-                      {cat?.name || "Pilates"}
+              return (
+                <div
+                  key={les.id}
+                  className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] overflow-hidden shadow-2xs flex flex-col justify-between hover:border-[#B77D82]/50 transition group"
+                >
+                  <div>
+                    <div className="relative h-40 w-full bg-[#F3EAE3] overflow-hidden">
+                      {les.thumbnailUrl ? (
+                        <img
+                          src={les.thumbnailUrl}
+                          alt={les.title}
+                          className="w-full h-full object-cover group-hover:scale-102 transition duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-[#827B77] gap-1">
+                          <Video className="w-8 h-8 opacity-40 text-[#B77D82]" />
+                          <span className="text-[10px]">Sem foto de capa</span>
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/20" />
+                      <div className="absolute top-2.5 left-2.5 bg-white/95 px-2 py-0.5 rounded-full text-[10px] font-bold text-[#292321] shadow-xs">
+                        {cat?.name || "Pilates"}
+                      </div>
+                      <div className="absolute bottom-2.5 right-2.5 bg-black/70 text-white px-2 py-0.5 rounded-full text-[11px] font-mono flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-[#EBD6D5]" />
+                        {les.durationMinutes} min
+                      </div>
                     </div>
-                    <div className="absolute bottom-2.5 right-2.5 bg-black/70 text-white px-2 py-0.5 rounded-full text-[11px] font-mono flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-[#EBD6D5]" />
-                      {les.durationMinutes} min
+
+                    <div className="p-4 space-y-2">
+                      <span className="text-[10px] text-[#827B77] font-semibold uppercase tracking-wider block">
+                        Subcategoria: {sub?.name || "Geral"}
+                      </span>
+                      <h3 className="font-serif font-bold text-sm text-[#292321] line-clamp-1">
+                        {les.title}
+                      </h3>
+                      <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
+                        {les.description}
+                      </p>
+
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+                        <span className="capitalize px-2 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77]">
+                          {les.level}
+                        </span>
+                        <span className="capitalize px-2 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77]">
+                          {les.format}
+                        </span>
+                        <span className="capitalize px-2 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77]">
+                          {les.equipment}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="p-4 space-y-2">
-                    <span className="text-[10px] text-[#827B77] font-semibold uppercase tracking-wider block">
-                      Subcategoria: {sub?.name || "Geral"}
-                    </span>
-                    <h3 className="font-serif font-bold text-sm text-[#292321] line-clamp-1">
-                      {les.title}
-                    </h3>
-                    <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
-                      {les.description}
-                    </p>
+                  <div className="p-4 pt-2 border-t border-[#FAF7F2] flex items-center justify-between">
+                    <button
+                      onClick={() => toggleStatus(les)}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition cursor-pointer ${
+                        les.status === "publicado"
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-amber-50 text-amber-800 border border-amber-200"
+                      }`}
+                    >
+                      {les.status === "publicado" ? (
+                        <>
+                          <CheckCircle2 className="w-3 h-3" />
+                          Publicado
+                        </>
+                      ) : (
+                        <>
+                          <EyeOff className="w-3 h-3" />
+                          Rascunho
+                        </>
+                      )}
+                    </button>
 
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
-                      <span className="capitalize px-2 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77]">
-                        {les.level}
-                      </span>
-                      <span className="capitalize px-2 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77]">
-                        {les.format}
-                      </span>
-                      <span className="capitalize px-2 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77]">
-                        {les.equipment}
-                      </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleOpenEdit(les)}
+                        className="p-1.5 rounded-lg text-[#827B77] hover:text-[#292321] hover:bg-[#FAF7F2] cursor-pointer"
+                        title="Editar"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(les)}
+                        className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 cursor-pointer"
+                        title="Excluir"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
-
-                <div className="p-4 pt-2 border-t border-[#FAF7F2] flex items-center justify-between">
-                  <button
-                    onClick={() => toggleStatus(les)}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition ${
-                      les.status === "publicado"
-                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        : "bg-amber-50 text-amber-800 border border-amber-200"
-                    }`}
-                  >
-                    {les.status === "publicado" ? (
-                      <>
-                        <CheckCircle2 className="w-3 h-3" />
-                        Publicado
-                      </>
-                    ) : (
-                      <>
-                        <EyeOff className="w-3 h-3" />
-                        Rascunho
-                      </>
-                    )}
-                  </button>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => handleOpenEdit(les)}
-                      className="p-1.5 rounded-lg text-[#827B77] hover:text-[#292321] hover:bg-[#FAF7F2]"
-                      title="Editar"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm(`Excluir a aula "${les.title}"?`)) {
-                          deleteLesson(les.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50"
-                      title="Excluir"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+        )}
       </div>
 
       {/* Modal de Criação / Edição de Aula */}
@@ -373,6 +472,13 @@ export default function AdminLessonsPage() {
             </div>
 
             <form onSubmit={handleSave} className="space-y-3.5">
+              {modalError && (
+                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{modalError}</span>
+                </div>
+              )}
+
               <div className="space-y-1">
                 <label className="text-[11px] font-bold uppercase text-[#827B77] block">
                   Título da Aula
@@ -575,9 +681,17 @@ export default function AdminLessonsPage() {
 
               <button
                 type="submit"
-                className="w-full py-3 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C]"
+                disabled={isSaving}
+                className="w-full py-3 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
               >
-                Salvar Aula
+                {isSaving ? (
+                  <>
+                    <Clock className="w-4 h-4 animate-spin" />
+                    <span>Salvando aula no Supabase...</span>
+                  </>
+                ) : (
+                  <span>Salvar Aula</span>
+                )}
               </button>
             </form>
           </div>

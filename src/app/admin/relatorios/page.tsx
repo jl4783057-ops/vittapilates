@@ -5,11 +5,11 @@ import { useApp } from "@/lib/store/context";
 import { BarChart3, TrendingUp, Award, Clock, Users, Play, CheckCircle2 } from "lucide-react";
 
 export default function AdminReportsPage() {
-  const { lessons, users, categories } = useApp();
+  const { lessons, categories } = useApp();
 
   const totalCompletions = lessons.reduce((acc, l) => acc + (l.completionsCount || 0), 0);
   const totalViews = lessons.reduce((acc, l) => acc + (l.viewsCount || 0), 0);
-  const avgCompletionRate = totalViews > 0 ? ((totalCompletions / totalViews) * 100).toFixed(1) : "84.5";
+  const avgCompletionRate = totalViews > 0 ? ((totalCompletions / totalViews) * 100).toFixed(1) : "0.0";
 
   // Top 5 Aulas mais concluídas
   const topLessons = [...lessons]

@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import {
   Calendar,
+  CheckCircle2,
   CreditCard,
   DollarSign,
   Percent,
@@ -11,12 +12,7 @@ import {
   UserMinus,
   UserPlus,
   Users,
-  CheckCircle2,
-  HelpCircle,
-  Database,
-  Webhook,
   Gift,
-  ShieldCheck,
   AlertCircle,
 } from "lucide-react";
 
@@ -166,31 +162,31 @@ export default function AdminDashboardPage() {
 
   const summaryCards = [
     {
-      title: "Compras aprovadas (Cakto)",
+      title: "Compras aprovadas",
       value: m.totalApprovedPurchases.toLocaleString("pt-BR"),
-      badge: "Dado Real • Cakto",
-      note: `Total acumulado de pedidos confirmados pelo webhook. No período: ${m.periodApprovedPurchases}.`,
+      badge: "Total acumulado",
+      note: `No período selecionado: ${m.periodApprovedPurchases} compras confirmadas.`,
       icon: CreditCard,
     },
     {
       title: "Alunas com acesso ativo",
       value: m.activeSubscribers.toLocaleString("pt-BR"),
-      badge: "Dado Real • Supabase",
-      note: "Perfis com acesso ativo de assinante pagante (exclui cortesias).",
+      badge: "Assinantes pagantes",
+      note: "Perfis com acesso ativo de assinatura paga (exclui cortesias).",
       icon: Users,
     },
     {
       title: "Novas compras no período",
       value: m.periodApprovedPurchases.toLocaleString("pt-BR"),
-      badge: "Dado Real • Cakto",
-      note: "Compras aprovadas no intervalo selecionado pelo filtro.",
+      badge: "No período selecionado",
+      note: "Total de novas transações aprovadas no intervalo de datas.",
       icon: UserPlus,
     },
     {
-      title: "Cancelamentos / Estornos",
+      title: "Cancelamentos e estornos",
       value: m.periodCancellationsOrRefunds.toLocaleString("pt-BR"),
-      badge: "Dado Real • Cakto",
-      note: `Eventos de cancelamento/estorno no período. Total de canceladas: ${m.canceledSubscribers}.`,
+      badge: "No período selecionado",
+      note: `Total de assinaturas canceladas acumulado: ${m.canceledSubscribers}.`,
       icon: UserMinus,
     },
   ];
@@ -198,50 +194,50 @@ export default function AdminDashboardPage() {
   const financialIndicators = [
     {
       title: "MRR (receita recorrente)",
-      value: "Dados insuficientes",
+      value: "—",
       status: "insuficiente",
-      badge: "Requer valor monetário",
-      note: "O webhook da Cakto confirma aprovação/renovação de acesso, mas não persiste o valor monetário (R$) do pedido no banco de dados.",
+      badge: "Pós-lançamento",
+      note: "Calculado a partir do montante das assinaturas ativas nos primeiros ciclos de cobrança.",
       icon: DollarSign,
     },
     {
       title: "Receita recebida líquida",
-      value: "Dados insuficientes",
+      value: "—",
       status: "insuficiente",
-      badge: "Requer valor monetário",
-      note: "Necessário gravar o montante financeiro líquido de cada transação no Supabase para totalizar receita.",
+      badge: "Pós-lançamento",
+      note: "Consolidará o total financeiro líquido das transações confirmadas.",
       icon: DollarSign,
     },
     {
       title: "Taxa de churn",
-      value: "Dados insuficientes",
+      value: "—",
       status: "insuficiente",
-      badge: "Histórico em consolidação",
-      note: "Requer histórico mensal consolidado de ciclos de cobrança ativos versus cancelados ao longo do tempo.",
+      badge: "Em consolidação",
+      note: "Mapeia a relação entre cancelamentos e base ativa após os primeiros meses.",
       icon: Percent,
     },
     {
       title: "Crescimento financeiro",
-      value: "Dados insuficientes",
+      value: "—",
       status: "insuficiente",
-      badge: "Requer histórico mensal",
-      note: "Calculado apenas quando houver comparação entre receitas líquidas de meses anteriores.",
+      badge: "Em consolidação",
+      note: "Comparativo percentual de evolução em relação ao mês anterior.",
       icon: TrendingUp,
     },
     {
       title: "ARPU (ticket médio)",
-      value: "Dados insuficientes",
+      value: "—",
       status: "insuficiente",
-      badge: "Requer valor monetário",
-      note: "Requer a divisão entre a receita financeira real recebida e o número de alunas ativas.",
+      badge: "Pós-lançamento",
+      note: "Média de faturamento por aluna ativa apurada nos ciclos de faturamento.",
       icon: DollarSign,
     },
     {
       title: "Taxa de renovação",
-      value: "Dados insuficientes",
+      value: "—",
       status: "insuficiente",
-      badge: "Ciclos futuros da Cakto",
-      note: "Métrica ativada conforme eventos subscription_renewed forem recebidos nos próximos ciclos.",
+      badge: "Ciclos futuros",
+      note: "Percentual de contratos renovados após o término do período contratado.",
       icon: RefreshCw,
     },
   ];
@@ -258,7 +254,7 @@ export default function AdminDashboardPage() {
             Dashboard Administrativo
           </h1>
           <p className="mt-1 text-sm text-[#827B77]">
-            Indicadores reais de compras via <strong>Cakto</strong>, alunas ativas e cortesias no <strong>Supabase</strong>.
+            Acompanhe o desempenho de vendas, assinantes ativas e engajamento da plataforma.
           </p>
         </div>
 
@@ -356,22 +352,6 @@ export default function AdminDashboardPage() {
         </section>
       )}
 
-      {/* Identificação da Integração Cakto Ativa */}
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-xs leading-relaxed text-emerald-950">
-        <div className="flex items-start gap-3">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-          <div className="space-y-1">
-            <p>
-              <strong className="font-semibold text-emerald-900">Integração de Pagamento Ativa:</strong>{" "}
-              Gateway <strong>Cakto</strong> configurado. O endpoint de webhook do projeto está pronto para processar compras aprovadas, renovações e estornos.
-            </p>
-            <p className="text-emerald-800 text-[11px]">
-              Os dados desta tela são consultados em tempo real diretamente das tabelas <code className="bg-emerald-100/80 px-1 py-0.5 rounded font-mono">cakto_orders</code> e <code className="bg-emerald-100/80 px-1 py-0.5 rounded font-mono">profiles</code> no Supabase. Não são exibidos dados simulados ou fictícios.
-            </p>
-          </div>
-        </div>
-      </div>
-
       {fetchError && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-900 flex items-center gap-2.5">
           <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -391,7 +371,7 @@ export default function AdminDashboardPage() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h2 className="text-xs font-bold uppercase tracking-wider text-[#827B77]">{card.title}</h2>
-                  <span className="inline-block mt-1 text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
+                  <span className="inline-block mt-1 text-[10px] bg-stone-100 text-[#827B77] border border-stone-200 px-2 py-0.5 rounded-full font-medium">
                     {card.badge}
                   </span>
                 </div>
@@ -451,7 +431,7 @@ export default function AdminDashboardPage() {
                 Indicadores Financeiros de Recorrência
               </h2>
               <span className="rounded-full bg-[#FAF7F2] border border-[#EADBCE] px-3 py-1 text-[11px] font-semibold text-[#B77D82]">
-                Cakto
+                Métricas de Negócio
               </span>
             </div>
             <p className="text-xs text-[#827B77] mt-1">
@@ -497,51 +477,6 @@ export default function AdminDashboardPage() {
               </article>
             );
           })}
-        </div>
-      </section>
-
-      {/* Painel Explicativo: Como os dados da Cakto operam */}
-      <section className="rounded-3xl border border-[#EADBCE] bg-[#FFFFFF] p-6 shadow-xs space-y-4">
-        <div className="flex items-center gap-2 text-[#292321]">
-          <HelpCircle className="w-5 h-5 text-[#B77D82]" />
-          <h2 className="font-serif font-bold text-lg">
-            Arquitetura de dados da Cakto e do Supabase
-          </h2>
-        </div>
-        <p className="text-xs text-[#827B77] leading-relaxed">
-          O Vitta Pilates utiliza a <strong>Cakto</strong> como gateway oficial para processamento de cartões e Pix, integrado de forma segura ao <strong>Supabase</strong>:
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-          <div className="p-4 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-[#292321]">
-              <Webhook className="w-4 h-4 text-[#B77D82]" />
-              <h3>1. Webhook Oficial Ativo</h3>
-            </div>
-            <p className="text-[11px] text-[#827B77] leading-relaxed">
-              Rota <code className="text-[#B77D82] font-mono">/api/webhooks/cakto</code> configurada com validação de assinatura e idempotência na tabela <code className="font-mono">cakto_orders</code>.
-            </p>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-[#292321]">
-              <ShieldCheck className="w-4 h-4 text-[#B77D82]" />
-              <h3>2. Liberação Automática de Acesso</h3>
-            </div>
-            <p className="text-[11px] text-[#827B77] leading-relaxed">
-              Ao confirmar compra aprovada, o perfil é criado no Supabase Auth com link para definir senha, garantindo acesso exclusivo das alunas pagantes às aulas.
-            </p>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-[#292321]">
-              <Database className="w-4 h-4 text-[#B77D82]" />
-              <h3>3. Persistência de Auditoria</h3>
-            </div>
-            <p className="text-[11px] text-[#827B77] leading-relaxed">
-              Registra os identificadores de pedido, e-mail e status do evento. Para cálculo de MRR monetário no dashboard, basta mapear o campo de valor financeiro no payload persistido.
-            </p>
-          </div>
         </div>
       </section>
     </div>

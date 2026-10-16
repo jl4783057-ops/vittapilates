@@ -5,7 +5,14 @@ import { useApp } from "@/lib/store/context";
 import { MessageCircle, Heart, Users, Sparkles, AlertCircle, ExternalLink } from "lucide-react";
 
 export default function StudentCommunityPage() {
-  const { siteSettings } = useApp();
+  const { siteSettings, categories } = useApp();
+
+  const communityCategory = categories.find(
+    (c) => c.slug === "comunidade" || c.id === "cat-comunidade"
+  );
+  const bannerUrl =
+    communityCategory?.bannerUrl ||
+    "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1000&q=80";
 
   const title = siteSettings.whatsappCommunityTitle || "Sua jornada é melhor quando estamos juntas.";
   const subtitle =
@@ -24,11 +31,11 @@ export default function StudentCommunityPage() {
   return (
     <div className="space-y-6 animate-fade-in py-2">
       <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] overflow-hidden shadow-[0_8px_30px_rgba(41,35,33,0.05)]">
-        {/* Banner Acolhedor */}
+        {/* Banner Acolhedor Persistido */}
         <div className="relative h-48 sm:h-56 w-full bg-[#F3EAE3] overflow-hidden">
           <img
-            src="https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1000&q=80"
-            alt="Mulheres praticando bem-estar juntas"
+            src={bannerUrl}
+            alt="Comunidade Vitta Pilates"
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent flex items-end p-5">

@@ -35,6 +35,12 @@ function ResetPasswordContent() {
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState(false);
 
+  // Estados para fluxo de validação direta por código OTP (anti-scanner/anti-prefetch)
+  const [otpCode, setOtpCode] = useState("");
+  const [inputEmail, setInputEmail] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState("");
+
   useEffect(() => {
     let isMounted = true;
     let resolved = false;
@@ -208,6 +214,60 @@ function ResetPasswordContent() {
   };
 }, [searchParams]);
 
+  // Validação manual por código OTP recebido no e-mail
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOtpError("");
+
+    const cleanEmail = (inputEmail || userEmail).trim().toLowerCase();
+    const cleanToken = otpCode.trim();
+
+    if (!cleanEmail) {
+      setOtpError("Por favor, informe seu e-mail cadastrado.");
+      return;
+    }
+
+    if (!cleanToken) {
+      setOtpError("Por favor, digite o código de verificação recebido por e-mail.");
+      return;
+    }
+
+    if (!isSupabaseConfigured || !supabase) {
+      setOtpError("Serviço de autenticação temporariamente indisponível.");
+      return;
+    }
+
+    setOtpLoading(true);
+
+    try {
+      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+        email: cleanEmail,
+        token: cleanToken,
+        type: "recovery",
+      });
+
+      if (verifyErr) {
+        console.error("[redefinir-senha] Erro verifyOtp código:", verifyErr);
+        setOtpError("Código inválido ou expirado. Verifique o código recebido ou solicite um novo.");
+        return;
+      }
+
+      if (data?.session?.user || data?.user) {
+        setUserEmail(cleanEmail);
+        setHasValidSession(true);
+        setError("");
+        setOtpError("");
+      } else {
+        setOtpError("Não foi possível validar o código. Tente novamente.");
+      }
+    } catch (err: unknown) {
+      console.error("[redefinir-senha] Exceção verifyOtp:", err);
+      setOtpError("Ocorreu uma falha ao validar o código. Tente novamente.");
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -297,27 +357,86 @@ function ResetPasswordContent() {
           </div>
         )}
 
-        {/* 2. Link inválido / expirado */}
+        {/* 2. Link inválido / expirado / pré-consumido por scanner de e-mail */}
         {!checkingSession && hasValidSession === false && (
-          <div className="space-y-4">
-            <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-2xl flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="space-y-5">
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-2xl flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div className="space-y-1 text-xs leading-relaxed">
-                <p className="font-semibold text-rose-900">Link expirado ou inválido</p>
-                <p>{error || "Este link de recuperação não é mais válido. Por motivos de segurança, solicite um novo link."}</p>
+                <p className="font-semibold text-amber-950">Link pré-consumido ou expirado</p>
+                <p>
+                  Por segurança contra antivírus e leitores automáticos de e-mail, você pode digitar o <strong>código de verificação</strong> recebido na sua mensagem para continuar imediatamente.
+                </p>
               </div>
             </div>
 
-            <div className="pt-2 flex flex-col gap-2">
+            {/* Formulário de validação por código OTP */}
+            <form onSubmit={handleVerifyOtp} className="space-y-3.5 bg-[#FAF7F2] p-4 rounded-2xl border border-[#EADBCE]">
+              <p className="text-xs font-semibold text-[#292321]">
+                Validar com o Código de 6 ou 8 dígitos do e-mail:
+              </p>
+
+              {otpError && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs px-3 py-2 rounded-xl flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{otpError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-[#827B77] uppercase tracking-wider">
+                  Seu E-mail
+                </label>
+                <input
+                  type="email"
+                  value={inputEmail}
+                  onChange={(e) => setInputEmail(e.target.value)}
+                  placeholder="seu-email@exemplo.com"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#EADBCE] bg-white text-xs text-[#292321] focus:outline-none focus:ring-2 focus:ring-[#B77D82]/50 transition"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-[#827B77] uppercase tracking-wider">
+                  Código de Verificação
+                </label>
+                <input
+                  type="text"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\s+/g, ""))}
+                  placeholder="Ex: 123456"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#EADBCE] bg-white text-sm font-mono tracking-widest text-center text-[#292321] focus:outline-none focus:ring-2 focus:ring-[#B77D82]/50 transition"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={otpLoading}
+                className="w-full py-3 px-4 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-medium text-xs tracking-wide shadow-sm hover:shadow transition disabled:opacity-70 cursor-pointer flex items-center justify-center gap-2"
+              >
+                {otpLoading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Validando código...
+                  </>
+                ) : (
+                  "VALIDAR CÓDIGO E CRIAR SENHA"
+                )}
+              </button>
+            </form>
+
+            <div className="pt-1 flex flex-col gap-2">
               <Link
                 href="/recuperar-senha"
-                className="w-full py-3.5 px-6 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-medium text-sm text-center tracking-wide shadow-sm hover:shadow transition block"
+                className="w-full py-2.5 px-4 rounded-full border border-[#EADBCE] bg-white text-[#827B77] hover:text-[#292321] text-xs font-medium text-center transition block"
               >
-                SOLICITAR NOVO LINK
+                Solicitar um Novo Link ou Código
               </Link>
               <Link
                 href="/login"
-                className="w-full py-3 px-6 rounded-full border border-[#EADBCE] text-[#827B77] hover:text-[#292321] text-xs font-medium text-center transition block"
+                className="w-full py-2 text-[#827B77] hover:text-[#292321] text-xs text-center transition block hover:underline"
               >
                 Voltar para o Login
               </Link>

@@ -35,6 +35,12 @@ function SetPasswordContent() {
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState(false);
 
+  // Estados para fluxo de validação por código OTP (anti-scanner/anti-prefetch)
+  const [otpCode, setOtpCode] = useState("");
+  const [inputEmail, setInputEmail] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState("");
+
   useEffect(() => {
     let isMounted = true;
     let resolved = false;
@@ -219,6 +225,72 @@ function SetPasswordContent() {
   };
 }, [searchParams]);
 
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOtpError("");
+
+    const cleanEmail = (inputEmail || userEmail).trim().toLowerCase();
+    const cleanToken = otpCode.trim();
+
+    if (!cleanEmail) {
+      setOtpError("Por favor, informe seu e-mail cadastrado.");
+      return;
+    }
+
+    if (!cleanToken) {
+      setOtpError("Por favor, digite o código de verificação recebido por e-mail.");
+      return;
+    }
+
+    if (!isSupabaseConfigured || !supabase) {
+      setOtpError("Serviço de autenticação temporariamente indisponível.");
+      return;
+    }
+
+    setOtpLoading(true);
+
+    try {
+      // Tenta primeiro como invite, depois como recovery caso já seja conta existente
+      let { data, error: verifyErr } = await supabase.auth.verifyOtp({
+        email: cleanEmail,
+        token: cleanToken,
+        type: "invite",
+      });
+
+      if (verifyErr) {
+        const recoveryAttempt = await supabase.auth.verifyOtp({
+          email: cleanEmail,
+          token: cleanToken,
+          type: "recovery",
+        });
+        if (!recoveryAttempt.error) {
+          data = recoveryAttempt.data;
+          verifyErr = null;
+        }
+      }
+
+      if (verifyErr) {
+        console.error("[definir-senha] Erro verifyOtp código:", verifyErr);
+        setOtpError("Código de convite inválido ou expirado. Verifique os dígitos ou solicite novo acesso.");
+        return;
+      }
+
+      if (data?.session?.user || data?.user) {
+        setUserEmail(cleanEmail);
+        setHasValidSession(true);
+        setError("");
+        setOtpError("");
+      } else {
+        setOtpError("Não foi possível validar o código. Tente novamente.");
+      }
+    } catch (err: unknown) {
+      console.error("[definir-senha] Exceção verifyOtp:", err);
+      setOtpError("Ocorreu uma falha ao validar o código. Tente novamente.");
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -338,24 +410,80 @@ function SetPasswordContent() {
             ) : hasValidSession === false ? (
               /* Link Inválido ou Expirado */
               <div className="space-y-4">
-                <div className="bg-rose-50 border border-rose-200 text-rose-800 p-5 rounded-2xl space-y-2">
+                <div className="bg-amber-50 border border-amber-200 text-amber-950 p-4 rounded-2xl space-y-2">
                   <div className="flex items-center gap-2">
-                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-                    <h2 className="text-sm font-bold">Link inválido ou expirado</h2>
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                    <h2 className="text-sm font-bold">Link pré-consumido ou expirado</h2>
                   </div>
-                  <p className="text-xs text-rose-700 leading-relaxed">
-                    {error ||
-                      "Este link de convite não é mais válido ou já foi utilizado. Por segurança, os convites possuem validade limitada."}
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    Se o seu leitor de e-mail ou antivírus pré-carregou o link de convite, você pode digitar o <strong>código de verificação</strong> enviado para o seu e-mail para continuar:
                   </p>
                 </div>
 
+                {/* Formulário de código OTP para convite */}
+                <form onSubmit={handleVerifyOtp} className="space-y-3.5 bg-[#FAF7F2] p-4 rounded-2xl border border-[#EADBCE]">
+                  <p className="text-xs font-semibold text-[#292321]">
+                    Validar com o Código de 6 ou 8 dígitos do e-mail:
+                  </p>
+
+                  {otpError && (
+                    <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs px-3 py-2 rounded-xl flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{otpError}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-semibold text-[#827B77] uppercase tracking-wider">
+                      Seu E-mail
+                    </label>
+                    <input
+                      type="email"
+                      value={inputEmail}
+                      onChange={(e) => setInputEmail(e.target.value)}
+                      placeholder="seu-email@exemplo.com"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#EADBCE] bg-white text-xs text-[#292321] focus:outline-none focus:ring-2 focus:ring-[#B77D82]/50 transition"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-semibold text-[#827B77] uppercase tracking-wider">
+                      Código de Verificação
+                    </label>
+                    <input
+                      type="text"
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\s+/g, ""))}
+                      placeholder="Ex: 123456"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#EADBCE] bg-white text-sm font-mono tracking-widest text-center text-[#292321] focus:outline-none focus:ring-2 focus:ring-[#B77D82]/50 transition"
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={otpLoading}
+                    className="w-full py-3 px-4 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-medium text-xs tracking-wide shadow-sm hover:shadow transition disabled:opacity-70 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {otpLoading ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Validando código...
+                      </>
+                    ) : (
+                      "VALIDAR CÓDIGO E CRIAR SENHA"
+                    )}
+                  </button>
+                </form>
+
                 <div className="bg-[#FAF7F2] p-4 rounded-2xl border border-[#EADBCE] space-y-3 text-xs text-[#827B77]">
                   <p>
-                    Se você já confirmou sua assinatura pela Cakto ou recebeu uma cortesia, solicite um novo link de acesso pelo seu e-mail cadastrado:
+                    Se preferir receber um novo link de acesso, solicite pelo seu e-mail cadastrado:
                   </p>
                   <Link
                     href="/recuperar-senha"
-                    className="inline-flex items-center justify-center w-full py-2.5 px-4 rounded-xl bg-[#B77D82] hover:bg-[#A3676C] text-white font-medium text-xs shadow-xs transition"
+                    className="inline-flex items-center justify-center w-full py-2.5 px-4 rounded-full border border-[#EADBCE] bg-white text-[#827B77] hover:text-[#292321] text-xs font-medium text-center transition block"
                   >
                     Solicitar novo link por e-mail
                   </Link>

@@ -82,41 +82,62 @@ export function LoginForm({
         return;
       }
 
-      // 2. Carrega perfil correspondente na tabela profiles
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", authData.user.id)
-        .single();
+      // 2. Consulta autoritativa de acesso no servidor com o token da sessão
+      let hasAccess = false;
+      let profileData = null;
 
-      if (profileError || !profile) {
-        // Bloquear se o perfil não existe ou não pôde ser carregado
-        await supabase.auth.signOut();
-        setError("Perfil de aluna não encontrado. Entre em contato com o suporte para verificar sua assinatura.");
-        setLoading(false);
-        return;
+      if (authData.session?.access_token) {
+        try {
+          const res = await fetch("/api/aluna/acesso", {
+            headers: {
+              Authorization: `Bearer ${authData.session.access_token}`,
+            },
+          });
+          const json = await res.json().catch(() => ({}));
+          if (res.ok && json.hasAccess) {
+            hasAccess = true;
+            profileData = json.profile;
+          } else if (res.status === 403) {
+            hasAccess = false;
+            profileData = json.profile;
+          }
+        } catch (serverErr) {
+          console.warn("[login] Falha na consulta da API de acesso:", serverErr);
+        }
       }
 
-      // 3. Validação estrita de status de acesso ativo:
-      // - access_type === 'subscriber' E subscription_status === 'active' | 'trial'; OU
-      // - access_type === 'courtesy' E access_expires_at ainda não venceu
-      const isSubscriberActive =
-        profile.access_type === "subscriber" &&
-        (profile.subscription_status === "active" || profile.subscription_status === "trial");
+      // Fallback local via RLS caso a chamada de API não tenha respondido
+      if (!profileData) {
+        const { data: rlsProfile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", authData.user.id)
+          .maybeSingle();
 
-      const isCourtesyActive =
-        profile.access_type === "courtesy" &&
-        profile.access_expires_at &&
-        new Date(profile.access_expires_at).getTime() > Date.now();
+        if (rlsProfile) {
+          profileData = rlsProfile;
+          const isSubscriberActive =
+            (rlsProfile.access_type === "subscriber" || !rlsProfile.access_type) &&
+            (rlsProfile.subscription_status === "active" || rlsProfile.subscription_status === "trial");
 
-      const hasActiveAccess = isSubscriberActive || isCourtesyActive;
+          const isCourtesyActive =
+            rlsProfile.access_type === "courtesy" &&
+            rlsProfile.access_expires_at &&
+            new Date(rlsProfile.access_expires_at).getTime() > Date.now();
 
-      if (!hasActiveAccess) {
-        // Bloquear acesso se a usuária não possui acesso de assinante ou cortesia válida
+          hasAccess = Boolean(isSubscriberActive || isCourtesyActive);
+        }
+      }
+
+      // Se o perfil não for encontrado ou não tiver acesso ativo
+      if (!hasAccess) {
         await supabase.auth.signOut();
-        if (profile.access_type === "courtesy") {
+        if (profileData?.access_type === "courtesy") {
           setError("Seu período de cortesia expirou. Para continuar praticando, adquira um plano de assinatura.");
-        } else if (profile.access_type === "subscriber") {
+        } else if (
+          profileData?.subscription_status === "inactive" ||
+          profileData?.subscription_status === "canceled"
+        ) {
           setError("Sua assinatura não está ativa no momento. Entre em contato com o suporte para reativar seu acesso.");
         } else {
           setError("Sua conta não possui uma assinatura ou cortesia ativa associada. Verifique com o suporte.");
@@ -125,49 +146,32 @@ export function LoginForm({
         return;
       }
 
-      // Validação complementar de segurança no backend
-      if (authData.session?.access_token) {
-        try {
-          const serverCheck = await fetch("/api/aluna/acesso", {
-            headers: {
-              Authorization: `Bearer ${authData.session.access_token}`,
-            },
-          });
-          if (!serverCheck.ok) {
-            await supabase.auth.signOut();
-            setError("Acesso não autorizado pelo servidor. Sua conta não possui uma assinatura ou cortesia ativa.");
-            setLoading(false);
-            return;
-          }
-        } catch (e) {
-          console.warn("Aviso ao validar acesso no servidor:", e);
-        }
+      // 3. Montar dados da usuária e encaminhar à área de alunas
+      if (profileData) {
+        setCurrentUser({
+          id: profileData.id,
+          name: profileData.name || cleanEmail.split("@")[0].replace(".", " "),
+          email: profileData.email || cleanEmail,
+          role: profileData.role || "aluna",
+          avatarUrl: profileData.avatar_url || undefined,
+          phone: profileData.phone || undefined,
+          createdAt: profileData.created_at || new Date().toISOString(),
+          subscriptionStatus: profileData.subscription_status || "active",
+          subscriptionPlan: profileData.subscription_plan || "Mensal",
+          subscriptionRenewalDate: profileData.subscription_renewal_date || undefined,
+          accessType: profileData.access_type || "subscriber",
+          accessExpiresAt: profileData.access_expires_at || null,
+          completedLessonIds: profileData.completed_lesson_ids || [],
+          lastLessonId: profileData.last_lesson_id || undefined,
+          customPlan: profileData.custom_plan || null,
+        });
       }
 
-      // 4. Montar dados da usuária e encaminhar à área de alunas
-      setCurrentUser({
-        id: profile.id,
-        name: profile.name || cleanEmail.split("@")[0].replace(".", " "),
-        email: profile.email || cleanEmail,
-        role: profile.role || "aluna",
-        avatarUrl: profile.avatar_url || undefined,
-        phone: profile.phone || undefined,
-        createdAt: profile.created_at || new Date().toISOString(),
-        subscriptionStatus: profile.subscription_status || "active",
-        subscriptionPlan: profile.subscription_plan || "Mensal",
-        subscriptionRenewalDate: profile.subscription_renewal_date || undefined,
-        accessType: profile.access_type || "subscriber",
-        accessExpiresAt: profile.access_expires_at || null,
-        completedLessonIds: profile.completed_lesson_ids || [],
-        lastLessonId: profile.last_lesson_id || undefined,
-        customPlan: profile.custom_plan || null,
-      });
-
-      router.push("/aluna");
+      // 4. Redirecionamento completo para garantir envio limpo dos cookies pelo navegador ao servidor
+      window.location.href = "/aluna";
     } catch (err: unknown) {
       console.error("Erro no login:", err);
       setError("Erro de comunicação com o servidor. Verifique sua conexão e tente novamente.");
-    } finally {
       setLoading(false);
     }
   };
@@ -287,9 +291,19 @@ export function LoginForm({
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 px-6 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-medium text-sm tracking-wide shadow-sm hover:shadow transition transform active:scale-[0.99] disabled:opacity-70 cursor-pointer"
+                className="w-full py-3.5 px-6 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white font-medium text-sm tracking-wide shadow-sm hover:shadow transition transform active:scale-[0.99] disabled:opacity-70 cursor-pointer flex items-center justify-center gap-2"
               >
-                {loading ? "Entrando..." : "FAZER LOGIN"}
+                {loading ? (
+                  <>
+                    <Sparkles className="w-4 h-4 animate-spin" />
+                    <span>Entrando na sua conta...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>FAZER LOGIN</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </form>
 

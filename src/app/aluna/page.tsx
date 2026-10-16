@@ -14,13 +14,17 @@ import {
 } from "lucide-react";
 
 function getBahiaDayNumber() {
-  const dateInBahia = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Bahia",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  return Math.floor(Date.parse(`${dateInBahia}T00:00:00Z`) / 86_400_000);
+  try {
+    const dateInBahia = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Bahia",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    return Math.floor(Date.parse(`${dateInBahia}T00:00:00Z`) / 86_400_000);
+  } catch {
+    return Math.floor(Date.now() / 86_400_000);
+  }
 }
 
 export default function StudentDashboardPage() {

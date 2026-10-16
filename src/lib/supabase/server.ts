@@ -14,11 +14,26 @@ const supabaseAnonKey =
  */
 export async function createClientServer() {
   const cookieStore = await cookies();
+  const projectId = supabaseUrl ? new URL(supabaseUrl).hostname.split(".")[0] : "";
+  const defaultStorageKey = projectId ? `sb-${projectId}-auth-token` : "";
 
   return createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
-        return cookieStore.getAll();
+        const all = cookieStore.getAll();
+        if (defaultStorageKey && !all.some((c) => c.name.startsWith(defaultStorageKey))) {
+          const mapped = [...all];
+          for (const c of all) {
+            if (c.name.startsWith("sb-auth-token")) {
+              mapped.push({
+                name: c.name.replace("sb-auth-token", defaultStorageKey),
+                value: c.value,
+              });
+            }
+          }
+          return mapped;
+        }
+        return all;
       },
       setAll(cookiesToSet) {
         try {

@@ -30,11 +30,14 @@ export async function GET(request: Request) {
   // Resposta inicial de redirecionamento para o destino final
   let response = NextResponse.redirect(new URL(safeNext, origin));
 
+  const projectId = new URL(supabaseUrl).hostname.split(".")[0];
+  const defaultStorageKey = projectId ? `sb-${projectId}-auth-token` : "";
+
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
         const cookieHeader = request.headers.get("cookie") || "";
-        return cookieHeader
+        const all = cookieHeader
           .split(";")
           .map((c) => c.trim())
           .filter(Boolean)
@@ -42,6 +45,20 @@ export async function GET(request: Request) {
             const [name, ...rest] = c.split("=");
             return { name, value: rest.join("=") };
           });
+
+        if (defaultStorageKey && !all.some((c) => c.name.startsWith(defaultStorageKey))) {
+          const mapped = [...all];
+          for (const c of all) {
+            if (c.name.startsWith("sb-auth-token")) {
+              mapped.push({
+                name: c.name.replace("sb-auth-token", defaultStorageKey),
+                value: c.value,
+              });
+            }
+          }
+          return mapped;
+        }
+        return all;
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value, options }) => {

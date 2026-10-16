@@ -70,10 +70,26 @@ export async function proxy(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (supabaseUrl && supabaseAnonKey && !supabaseUrl.includes("your-project")) {
+    const projectId = new URL(supabaseUrl).hostname.split(".")[0];
+    const defaultStorageKey = projectId ? `sb-${projectId}-auth-token` : "";
+
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         getAll() {
-          return request.cookies.getAll();
+          const all = request.cookies.getAll();
+          if (defaultStorageKey && !all.some((c) => c.name.startsWith(defaultStorageKey))) {
+            const mapped = [...all];
+            for (const c of all) {
+              if (c.name.startsWith("sb-auth-token")) {
+                mapped.push({
+                  name: c.name.replace("sb-auth-token", defaultStorageKey),
+                  value: c.value,
+                });
+              }
+            }
+            return mapped;
+          }
+          return all;
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => {

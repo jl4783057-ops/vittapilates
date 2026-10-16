@@ -169,31 +169,50 @@ export async function applyCourtesyToProfile(userId: string, expiresAt: string) 
 }
 
 export async function getStudentAccess(userId: string) {
-  await expireCourtesies();
-  const admin = getSupabaseAdmin();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("id, name, email, avatar_url, phone, access_type, access_expires_at, subscription_status, subscription_plan, created_at")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (!profile) return { hasAccess: false as const, profile: null };
-
-  // First login of an invited influencer: mark the courtesy as accepted/active.
-  if (profile.access_type === "courtesy") {
-    await admin
-      .from("courtesy_grants")
-      .update({ status: "active", updated_at: new Date().toISOString() })
-      .eq("user_id", userId)
-      .eq("status", "invited");
+  try {
+    await expireCourtesies();
+  } catch (err) {
+    console.warn("[getStudentAccess] Falha não impeditiva ao expirar cortesias:", err);
   }
 
-  const hasAccess =
-    (profile.access_type === "subscriber" &&
-      (profile.subscription_status === "active" || profile.subscription_status === "trial")) ||
-    (profile.access_type === "courtesy" &&
-      !!profile.access_expires_at &&
-      new Date(profile.access_expires_at) > new Date());
+  try {
+    const admin = getSupabaseAdmin();
+    const { data: profile, error } = await admin
+      .from("profiles")
+      .select("id, name, email, avatar_url, phone, access_type, access_expires_at, subscription_status, subscription_plan, created_at")
+      .eq("id", userId)
+      .maybeSingle();
 
-  return { hasAccess, profile };
+    if (error) {
+      console.error("[getStudentAccess] Erro ao consultar perfil:", error);
+      return { hasAccess: false as const, profile: null };
+    }
+
+    if (!profile) return { hasAccess: false as const, profile: null };
+
+    // First login of an invited influencer: mark the courtesy as accepted/active.
+    if (profile.access_type === "courtesy") {
+      try {
+        await admin
+          .from("courtesy_grants")
+          .update({ status: "active", updated_at: new Date().toISOString() })
+          .eq("user_id", userId)
+          .eq("status", "invited");
+      } catch (courtesyErr) {
+        console.warn("[getStudentAccess] Falha ao atualizar courtesy_grants:", courtesyErr);
+      }
+    }
+
+    const hasAccess =
+      ((profile.access_type === "subscriber" || !profile.access_type) &&
+        (profile.subscription_status === "active" || profile.subscription_status === "trial")) ||
+      (profile.access_type === "courtesy" &&
+        !!profile.access_expires_at &&
+        new Date(profile.access_expires_at) > new Date());
+
+    return { hasAccess, profile };
+  } catch (err) {
+    console.error("[getStudentAccess] Exceção ao verificar acesso:", err);
+    return { hasAccess: false as const, profile: null };
+  }
 }

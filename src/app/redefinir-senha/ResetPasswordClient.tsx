@@ -40,6 +40,7 @@ function ResetPasswordContent() {
   const [inputEmail, setInputEmail] = useState("");
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState("");
+  const [sessionToken, setSessionToken] = useState<string>("");
 
   useEffect(() => {
     let isMounted = true;
@@ -296,12 +297,23 @@ function ResetPasswordContent() {
         }
       }
 
+      // Guarda o token de acesso da sessão validada para máxima resiliência (Safari/iOS)
+      if (activeSession?.access_token) {
+        setSessionToken(activeSession.access_token);
+      }
+
       // Reconfirma via getSession() que a sessão está pronta no cliente
       const { data: sessionCheck } = await supabase.auth.getSession();
       const confirmedUser = sessionCheck?.session?.user || activeSession?.user;
 
-      if (!sessionCheck?.session || !confirmedUser) {
-        console.error("[redefinir-senha] Falha de persistência de sessão após OTP.");
+      console.log("[redefinir-senha] Status de validação:", {
+        hasSessionData: Boolean(activeSession),
+        hasGetSession: Boolean(sessionCheck?.session),
+        userConfirmed: Boolean(confirmedUser),
+      });
+
+      if (!activeSession || !confirmedUser) {
+        console.error("[redefinir-senha] Falha de sessão após OTP.");
         setOtpError("A validação não foi concluída porque a sessão segura não pôde ser iniciada. Por favor, solicite um novo código.");
         return;
       }
@@ -346,37 +358,89 @@ function ResetPasswordContent() {
     setLoading(true);
 
     try {
-      // 1. Confirma previamente que há uma sessão ativa e usuário autenticado
-      const { data: checkSessionData } = await supabase.auth.getSession();
-      if (!checkSessionData?.session?.user) {
-        console.error("[redefinir-senha] Sessão ausente antes de updateUser.");
-        setError("Sua sessão de redefinição expirou ou não está mais ativa. Você pode validar o código novamente ou solicitar um novo.");
-        setLoading(false);
-        // Mantém o estado coerente sem voltar silenciosamente para a tela de código
-        return;
+      // 1. Confirma sessão ativa no cliente SDK ou reativa usando o sessionToken persistido
+      let { data: checkSessionData } = await supabase.auth.getSession();
+      
+      if (!checkSessionData?.session?.user && sessionToken) {
+        console.warn("[redefinir-senha] Sessão não encontrada em getSession(), restabelecendo com sessionToken...");
+        await supabase.auth.setSession({
+          access_token: sessionToken,
+          refresh_token: "",
+        }).catch(() => {});
+        const recheck = await supabase.auth.getSession();
+        checkSessionData = recheck.data;
       }
 
-      // 2. Atualiza a senha no Supabase Auth
-      const { data: updateData, error: updateError } = await supabase.auth.updateUser({
-        password: password,
+      console.log("[redefinir-senha] Checagem pré-update:", {
+        hasActiveSession: Boolean(checkSessionData?.session?.user),
+        hasFallbackToken: Boolean(sessionToken),
       });
 
-      if (updateError) {
-        console.error("[redefinir-senha] Erro técnico ao atualizar senha:", {
-          status: updateError.status,
-          message: updateError.message,
+      // 2. Atualiza a senha no Supabase Auth
+      let updateSuccess = false;
+      let lastErrorMessage = "";
+
+      // Tentativa A: via SDK oficial (supabase.auth.updateUser)
+      if (checkSessionData?.session?.user) {
+        const { data: updateData, error: updateError } = await supabase.auth.updateUser({
+          password: password,
         });
-        if (updateError.message.toLowerCase().includes("session") || updateError.status === 401) {
-          setError("Sua sessão de segurança expirou. Por favor, digite o código de verificação novamente ou solicite um novo.");
-        } else {
-          setError(updateError.message || "Não foi possível atualizar a senha. Tente novamente.");
+
+        if (!updateError && updateData?.user) {
+          updateSuccess = true;
+        } else if (updateError) {
+          console.error("[redefinir-senha] Tentativa SDK updateUser falhou:", {
+            status: updateError.status,
+            message: updateError.message,
+          });
+          lastErrorMessage = updateError.message;
         }
-        setLoading(false);
-        return;
       }
 
-      if (!updateData?.user) {
-        setError("Não foi possível confirmar a alteração da senha. Tente novamente.");
+      // Tentativa B: Fallback direto via endpoint autenticado com sessionToken (independente de cookies do Safari)
+      if (!updateSuccess && sessionToken) {
+        console.warn("[redefinir-senha] Executando fallback seguro com sessionToken...");
+        try {
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+          const supabaseKey =
+            process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+            "";
+
+          const directRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: supabaseKey,
+              Authorization: `Bearer ${sessionToken}`,
+            },
+            body: JSON.stringify({ password }),
+          });
+
+          if (directRes.ok) {
+            const directJson = await directRes.json();
+            if (directJson?.id || directJson?.email) {
+              updateSuccess = true;
+            }
+          } else {
+            const errJson = await directRes.json().catch(() => ({}));
+            lastErrorMessage = errJson?.msg || errJson?.message || "Falha na comunicação com o servidor.";
+          }
+        } catch (fallbackErr) {
+          console.error("[redefinir-senha] Falha na requisição direta:", fallbackErr);
+        }
+      }
+
+      if (!updateSuccess) {
+        if (
+          !lastErrorMessage ||
+          lastErrorMessage.toLowerCase().includes("session") ||
+          lastErrorMessage.toLowerCase().includes("jwt")
+        ) {
+          setError("Sua sessão de segurança expirou. Por favor, digite o código de verificação novamente ou solicite um novo.");
+        } else {
+          setError(lastErrorMessage || "Não foi possível atualizar a senha. Tente novamente.");
+        }
         setLoading(false);
         return;
       }

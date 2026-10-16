@@ -29,11 +29,13 @@ export async function proxy(request: NextRequest) {
     ...(r2PublicDomain ? [r2PublicDomain] : []),
   ].join(" ");
 
-  // A nonce lets the browser execute only the scripts Next.js emitted for this request.
+  // A nonce lets the browser execute scripts Next.js emitted for this request.
+  // Note: Modern browsers honoring CSP Level 3 ignore 'unsafe-inline' when a nonce or 'strict-dynamic' is present,
+  // but keeping 'unsafe-inline' and allowing trusted scripts avoids total client blackout if any intermediary caches mismatch.
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const csp = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDevelopment ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     `img-src ${allowedImageSources}`,
     "font-src 'self' data:",

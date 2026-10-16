@@ -62,8 +62,33 @@ function ResetPasswordContent() {
       setCheckingSession(false);
     };
 
-    // Safety timeout: SEMPRE encerra o estado de carregamento em no máximo 2.5s,
-    // independentemente de qualquer travamento ou atraso de rede/bibliotecas externas.
+    // Preenche e-mail vindo de query string (?email=...) caso exista
+    const queryEmail = searchParams.get("email");
+    if (queryEmail) {
+      setInputEmail(queryEmail);
+    }
+
+    // Se a usuária abriu a página diretamente para digitar o código (sem hash e sem parâmetros de auth),
+    // encerra a checagem imediatamente e exibe o formulário de código, sem aguardar 2.5s de timeout.
+    const hasHashTokens = typeof window !== "undefined" && Boolean(window.location.hash);
+    const hasAuthParams = searchParams.has("code") || searchParams.has("token_hash") || searchParams.has("error");
+    if (!hasHashTokens && !hasAuthParams) {
+      // Checa sessão rápida e se não houver já exibe o formulário de código
+      supabase?.auth.getSession().then(({ data }) => {
+        if (!resolved && isMounted) {
+          if (data?.session?.user) {
+            markSuccess(data.session.user.email || "");
+          } else {
+            markFailure("");
+          }
+        }
+      }).catch(() => {
+        if (!resolved && isMounted) markFailure("");
+      });
+      return;
+    }
+
+    // Safety timeout: encerra o estado de carregamento em no máximo 2.5s para fluxos com hash/code
     const fallbackTimer = setTimeout(() => {
       if (!resolved && isMounted) {
         markFailure("Nenhum link ou sessão de recuperação ativa encontrada. Por favor, solicite um novo link.");
@@ -357,18 +382,30 @@ function ResetPasswordContent() {
           </div>
         )}
 
-        {/* 2. Link inválido / expirado / pré-consumido por scanner de e-mail */}
+        {/* 2. Formulário de validação por código OTP (anti-scanner / recuperação direta) */}
         {!checkingSession && hasValidSession === false && (
           <div className="space-y-5">
-            <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-2xl flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div className="space-y-1 text-xs leading-relaxed">
-                <p className="font-semibold text-amber-950">Link pré-consumido ou expirado</p>
-                <p>
-                  Por segurança contra antivírus e leitores automáticos de e-mail, você pode digitar o <strong>código de verificação</strong> recebido na sua mensagem para continuar imediatamente.
-                </p>
+            {error ? (
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-2xl flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1 text-xs leading-relaxed">
+                  <p className="font-semibold text-amber-950">Link pré-consumido ou expirado</p>
+                  <p>
+                    Por segurança contra antivírus e leitores automáticos de e-mail, digite o <strong>código de verificação</strong> enviado para o seu e-mail para continuar.
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77] p-4 rounded-2xl flex items-start gap-3">
+                <ShieldCheck className="w-5 h-5 text-[#B77D82] shrink-0 mt-0.5" />
+                <div className="space-y-1 text-xs leading-relaxed">
+                  <p className="font-semibold text-[#292321]">Confirmação de Identidade</p>
+                  <p>
+                    Digite seu e-mail cadastrado e o <strong>código de verificação</strong> recebido na sua caixa de entrada para criar sua nova senha.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Formulário de validação por código OTP */}
             <form onSubmit={handleVerifyOtp} className="space-y-3.5 bg-[#FAF7F2] p-4 rounded-2xl border border-[#EADBCE]">

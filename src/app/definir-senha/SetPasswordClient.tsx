@@ -62,6 +62,31 @@ function SetPasswordContent() {
       setCheckingSession(false);
     };
 
+    // Preenche e-mail vindo de query string (?email=...) caso exista
+    const queryEmail = searchParams.get("email");
+    if (queryEmail) {
+      setInputEmail(queryEmail);
+    }
+
+    // Se abriu diretamente para digitar o código (sem hash e sem parâmetros de auth),
+    // encerra a checagem imediatamente e exibe o formulário de código.
+    const hasHashTokens = typeof window !== "undefined" && Boolean(window.location.hash);
+    const hasAuthParams = searchParams.has("code") || searchParams.has("token_hash") || searchParams.has("error");
+    if (!hasHashTokens && !hasAuthParams) {
+      supabase?.auth.getSession().then(({ data }) => {
+        if (!resolved && isMounted) {
+          if (data?.session?.user) {
+            markSuccess(data.session.user.email || "");
+          } else {
+            markFailure("");
+          }
+        }
+      }).catch(() => {
+        if (!resolved && isMounted) markFailure("");
+      });
+      return;
+    }
+
     const fallbackTimer = setTimeout(() => {
       if (!resolved && isMounted) {
         markFailure("Nenhum link de convite válido ou sessão ativa encontrado. Por favor, solicite um novo link.");
@@ -408,17 +433,29 @@ function SetPasswordContent() {
                 </p>
               </div>
             ) : hasValidSession === false ? (
-              /* Link Inválido ou Expirado */
+              /* Formulário de código OTP */
               <div className="space-y-4">
-                <div className="bg-amber-50 border border-amber-200 text-amber-950 p-4 rounded-2xl space-y-2">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                    <h2 className="text-sm font-bold">Link pré-consumido ou expirado</h2>
+                {error ? (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-950 p-4 rounded-2xl space-y-2">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                      <h2 className="text-sm font-bold">Link pré-consumido ou expirado</h2>
+                    </div>
+                    <p className="text-xs text-amber-800 leading-relaxed">
+                      Se o seu leitor de e-mail ou antivírus pré-carregou o link de convite, você pode digitar o <strong>código de verificação</strong> enviado para o seu e-mail para continuar:
+                    </p>
                   </div>
-                  <p className="text-xs text-amber-800 leading-relaxed">
-                    Se o seu leitor de e-mail ou antivírus pré-carregou o link de convite, você pode digitar o <strong>código de verificação</strong> enviado para o seu e-mail para continuar:
-                  </p>
-                </div>
+                ) : (
+                  <div className="bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77] p-4 rounded-2xl flex items-start gap-3">
+                    <ShieldCheck className="w-5 h-5 text-[#B77D82] shrink-0 mt-0.5" />
+                    <div className="space-y-1 text-xs leading-relaxed">
+                      <p className="font-semibold text-[#292321]">Ativação de Conta</p>
+                      <p>
+                        Digite seu e-mail e o <strong>código de verificação</strong> recebido no seu e-mail de convite para criar sua senha.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Formulário de código OTP para convite */}
                 <form onSubmit={handleVerifyOtp} className="space-y-3.5 bg-[#FAF7F2] p-4 rounded-2xl border border-[#EADBCE]">

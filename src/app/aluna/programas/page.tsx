@@ -345,47 +345,50 @@ function ProgramsContent() {
         </p>
       </section>
 
-      {/* Cartões horizontais elegantes de Categorias */}
-      <section aria-label="Categorias de Pilates" className="space-y-3.5">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Cartões verticais de categoria largos com foto integrada (conforme referência) */}
+      <section aria-label="Categorias de Pilates" className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
           {publishedCategories.map((category) => {
             return (
               <button
                 key={category.id}
                 type="button"
                 onClick={() => handleOpenCategory(category.slug)}
-                className="group relative bg-[#F5EFE8]/70 hover:bg-[#F3EAE3] rounded-[26px] border border-[#EADBCE] overflow-hidden p-4 sm:p-5 text-left shadow-2xs hover:border-[#B77D82]/60 hover:shadow-sm transition-all duration-300 active:scale-[0.99] cursor-pointer flex items-center justify-between gap-3 min-h-[120px] sm:min-h-[140px]"
+                className="group relative w-full rounded-[28px] overflow-hidden border border-[#EADBCE] bg-[#F5EFE8] text-left shadow-2xs hover:border-[#B77D82]/60 hover:shadow-sm transition-all duration-300 active:scale-[0.99] cursor-pointer min-h-[150px] sm:min-h-[170px] aspect-[16/7.5] sm:aspect-[21/9] flex items-center"
               >
-                {/* Lado esquerdo: Nome e Descrição da Categoria */}
-                <div className="min-w-0 flex-1 space-y-1 pr-2">
-                  <h3 className="font-serif font-bold text-lg sm:text-xl text-[#292321] group-hover:text-[#B77D82] transition-colors leading-snug">
-                    {category.name}
-                  </h3>
-                  {category.description && (
-                    <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
-                      {category.description}
-                    </p>
-                  )}
-                </div>
+                {/* Imagem fotográfica horizontal integrada ocupando a composição inteira do card */}
+                {category.bannerUrl ? (
+                  <img
+                    src={category.bannerUrl}
+                    alt={category.name}
+                    className="absolute inset-0 w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-[1.03]"
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-[#F3EAE3] flex items-center justify-end pr-10 text-[#B77D82]/40">
+                    <Compass className="w-20 h-20 opacity-30" />
+                  </div>
+                )}
 
-                {/* Lado direito: Imagem da Categoria e Botão Circular Branco */}
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <div className="w-24 h-20 sm:w-32 sm:h-24 rounded-2xl overflow-hidden bg-[#FAF7F2] border border-[#EADBCE]/80 shadow-2xs relative">
-                    {category.bannerUrl ? (
-                      <img
-                        src={category.bannerUrl}
-                        alt={category.name}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-[#B77D82]">
-                        <Compass className="w-7 h-7 opacity-50" />
-                      </div>
+                {/* Gradiente sutil em marfim/areia para garantir leitura nítida e estética acolhedora */}
+                <div className="absolute inset-0 bg-gradient-to-r from-[#FAF7F2]/95 via-[#FAF7F2]/80 via-45% to-transparent pointer-events-none" />
+
+                {/* Conteúdo sobreposto: Título, Descrição e Botão circular */}
+                <div className="relative z-10 w-full h-full p-5 sm:p-6 flex items-center justify-between gap-4">
+                  {/* Textos: Nome da categoria e descrição */}
+                  <div className="min-w-0 max-w-[65%] sm:max-w-[60%] space-y-1">
+                    <h3 className="font-serif text-xl sm:text-2xl text-[#292321] group-hover:text-[#B77D82] transition-colors leading-tight drop-shadow-2xs">
+                      {category.name}
+                    </h3>
+                    {category.description && (
+                      <p className="text-xs sm:text-sm text-[#6A635E] line-clamp-2 leading-relaxed font-sans">
+                        {category.description}
+                      </p>
                     )}
                   </div>
 
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white text-[#292321] group-hover:bg-[#B77D82] group-hover:text-white flex items-center justify-center transition-colors shadow-2xs shrink-0">
-                    <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+                  {/* Botão de seta em círculo claro à direita, exatamente como na referência */}
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/95 text-[#292321] border border-[#EADBCE]/80 shadow-md flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-white group-hover:text-[#B77D82] transition-all">
+                    <ChevronRight className="w-5 h-5 stroke-[2.2]" />
                   </div>
                 </div>
               </button>

@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS public.lessons (
   materials TEXT DEFAULT 'Tapete de Pilates (Mat)',
   thumbnail_url TEXT NOT NULL,
   video_url TEXT NOT NULL,
+  video_provider TEXT NOT NULL DEFAULT 'external' CHECK (video_provider IN ('external', 'r2')),
+  video_storage_key TEXT,
   display_order INT NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'publicado' CHECK (status IN ('rascunho', 'publicado')),
   tags TEXT[] DEFAULT '{}',

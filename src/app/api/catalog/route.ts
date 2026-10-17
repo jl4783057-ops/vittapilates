@@ -22,22 +22,31 @@ export async function GET() {
 
     const [settingsRes, categoriesRes, subcategoriesRes] = await Promise.all([
       admin.from("site_settings").select("*").eq("id", 1).maybeSingle(),
-      admin.from("categories").select("*").eq("published", true).order("display_order", { ascending: true }),
-      admin.from("subcategories").select("*").eq("published", true).order("display_order", { ascending: true }),
+      admin.from("categories").select("*").order("display_order", { ascending: true }),
+      admin.from("subcategories").select("*").order("display_order", { ascending: true }),
     ]);
 
     const siteSettings = settingsRes.data ? mapDbToSiteSettings(settingsRes.data) : INITIAL_SETTINGS;
-    const categories = categoriesRes.data && categoriesRes.data.length > 0
+    const rawCategories = categoriesRes.data && categoriesRes.data.length > 0
       ? categoriesRes.data.map(mapDbToCategory)
-      : INITIAL_CATEGORIES.filter((c) => c.published);
-    const subcategories = subcategoriesRes.data && subcategoriesRes.data.length > 0
+      : INITIAL_CATEGORIES;
+    const rawSubcategories = subcategoriesRes.data && subcategoriesRes.data.length > 0
       ? subcategoriesRes.data.map(mapDbToSubcategory)
-      : INITIAL_SUBCATEGORIES.filter((s) => s.published);
+      : INITIAL_SUBCATEGORIES;
+
+    // Mapa de disponibilidade de categorias pai
+    const activeCategoryIds = new Set(rawCategories.filter((c) => c.published).map((c) => c.id));
+
+    // Subcategorias herdam a disponibilidade da categoria pai
+    const subcategories = rawSubcategories.map((sub) => ({
+      ...sub,
+      published: Boolean(sub.published && activeCategoryIds.has(sub.categoryId)),
+    }));
 
     return NextResponse.json({
       configured: true,
       siteSettings,
-      categories,
+      categories: rawCategories,
       subcategories,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {

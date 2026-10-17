@@ -60,6 +60,8 @@ export interface Lesson {
   materials: string;
   thumbnailUrl: string;
   videoUrl: string;
+  videoProvider?: "external" | "r2";
+  videoStorageKey?: string;
   order: number;
   status: LessonStatus;
   tags: string[];

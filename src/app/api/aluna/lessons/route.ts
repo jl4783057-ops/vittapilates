@@ -37,16 +37,27 @@ export async function GET(request: Request) {
   // 3. Usuária autorizada: buscar aulas publicadas no Supabase
   try {
     const admin = getSupabaseAdmin();
-    const { data, error } = await admin
-      .from("lessons")
-      .select("*")
-      .eq("status", "publicado")
-      .order("display_order", { ascending: true });
+    const [catsRes, subsRes, lessonsRes] = await Promise.all([
+      admin.from("categories").select("id, published"),
+      admin.from("subcategories").select("id, category_id, published"),
+      admin.from("lessons").select("*").eq("status", "publicado").order("display_order", { ascending: true }),
+    ]);
 
-    if (error) throw error;
+    if (lessonsRes.error) throw lessonsRes.error;
+
+    const activeCatIds = new Set((catsRes.data || []).filter((c) => c.published).map((c) => c.id));
+    const activeSubIds = new Set(
+      (subsRes.data || [])
+        .filter((s) => s.published && activeCatIds.has(s.category_id))
+        .map((s) => s.id)
+    );
+
+    const availableLessons = (lessonsRes.data || []).filter(
+      (l) => activeCatIds.has(l.category_id) && activeSubIds.has(l.subcategory_id)
+    );
 
     return NextResponse.json(
-      { lessons: (data || []).map(mapDbToLesson) },
+      { lessons: availableLessons.map((row) => mapDbToLesson(row, false)) },
       { headers: { "Cache-Control": "private, no-store" } }
     );
   } catch (err) {

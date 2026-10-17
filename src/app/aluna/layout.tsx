@@ -104,14 +104,26 @@ export default async function StudentLayout({
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const { mapDbToLesson } = await import("@/app/api/admin/lessons/route");
-    const { data: lessonsData } = await getSupabaseAdmin()
-      .from("lessons")
-      .select("*")
-      .eq("status", "publicado")
-      .order("display_order", { ascending: true });
+    const admin = getSupabaseAdmin();
+    const [catsRes, subsRes, lessonsRes] = await Promise.all([
+      admin.from("categories").select("id, published"),
+      admin.from("subcategories").select("id, category_id, published"),
+      admin.from("lessons").select("*").eq("status", "publicado").order("display_order", { ascending: true }),
+    ]);
 
-    if (lessonsData && lessonsData.length > 0) {
-      initialLessons = lessonsData.map(mapDbToLesson);
+    const activeCatIds = new Set((catsRes.data || []).filter((c) => c.published).map((c) => c.id));
+    const activeSubIds = new Set(
+      (subsRes.data || [])
+        .filter((s) => s.published && activeCatIds.has(s.category_id))
+        .map((s) => s.id)
+    );
+
+    const availableLessons = (lessonsRes.data || []).filter(
+      (l) => activeCatIds.has(l.category_id) && activeSubIds.has(l.subcategory_id)
+    );
+
+    if (availableLessons.length > 0) {
+      initialLessons = availableLessons.map((row) => mapDbToLesson(row, false));
     }
   } catch (err) {
     console.error("Erro ao carregar aulas da aluna no SSR:", err);

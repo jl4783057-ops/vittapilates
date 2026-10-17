@@ -26,8 +26,20 @@ function getBahiaDayNumber() {
 }
 
 export default function StudentDashboardPage() {
-  const { currentUser, lessons, categories } = useApp();
-  const publishedLessons = lessons.filter((lesson) => lesson.status === "publicado");
+  const { currentUser, lessons, categories, subcategories } = useApp();
+  const activeCategoryIds = new Set(categories.filter((c) => c.published).map((c) => c.id));
+  const activeSubcategoryIds = new Set(
+    subcategories
+      .filter((s) => s.published && activeCategoryIds.has(s.categoryId))
+      .map((s) => s.id)
+  );
+
+  const publishedLessons = lessons.filter(
+    (lesson) =>
+      lesson.status === "publicado" &&
+      activeCategoryIds.has(lesson.categoryId) &&
+      activeSubcategoryIds.has(lesson.subcategoryId)
+  );
 
   // Aula para continuar ou primeira aula disponível
   const currentLesson =

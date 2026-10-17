@@ -4,7 +4,7 @@ import { isAdminRequest } from "@/lib/access";
 import { Lesson, LessonLevel, LessonFormat, LessonEquipment, LessonStatus } from "@/types";
 import { INITIAL_LESSONS } from "@/lib/data/initial-data";
 
-export function mapDbToLesson(row: Record<string, unknown>): Lesson {
+export function mapDbToLesson(row: Record<string, unknown>, includePrivateStorageKey = true): Lesson {
   return {
     id: String(row.id),
     title: String(row.title),
@@ -17,7 +17,11 @@ export function mapDbToLesson(row: Record<string, unknown>): Lesson {
     equipment: (row.equipment as LessonEquipment) || "sem equipamento",
     materials: typeof row.materials === "string" ? row.materials : "Tapete de Pilates (Mat)",
     thumbnailUrl: String(row.thumbnail_url),
-    videoUrl: String(row.video_url),
+    videoUrl: row.video_provider === "r2" ? "" : String(row.video_url || ""),
+    videoProvider: row.video_provider === "r2" ? "r2" : "external",
+    ...(includePrivateStorageKey && typeof row.video_storage_key === "string"
+      ? { videoStorageKey: row.video_storage_key }
+      : {}),
     order: Number(row.display_order ?? 0),
     status: (row.status as LessonStatus) || "publicado",
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
@@ -39,7 +43,9 @@ export function mapLessonToDb(lesson: Lesson): Record<string, unknown> {
     equipment: lesson.equipment,
     materials: lesson.materials || null,
     thumbnail_url: lesson.thumbnailUrl,
-    video_url: lesson.videoUrl,
+    video_url: lesson.videoProvider === "r2" ? "" : lesson.videoUrl,
+    video_provider: lesson.videoProvider === "r2" ? "r2" : "external",
+    video_storage_key: lesson.videoProvider === "r2" ? lesson.videoStorageKey || null : null,
     display_order: lesson.order,
     status: lesson.status,
     tags: lesson.tags || [],
@@ -69,7 +75,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ configured: true, lessons: [] }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    return NextResponse.json({ configured: true, lessons: (data || []).map(mapDbToLesson) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ configured: true, lessons: (data || []).map((row) => mapDbToLesson(row)) }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("Erro ao listar aulas:", err);
     return NextResponse.json({ configured: false, lessons: [] }, { headers: { "Cache-Control": "no-store" } });
@@ -116,7 +122,7 @@ export async function PUT(request: NextRequest) {
         .upsert(rows)
         .select("*");
       if (error) throw error;
-      return NextResponse.json({ success: true, lessons: (data || []).map(mapDbToLesson) });
+    return NextResponse.json({ success: true, lessons: (data || []).map((row) => mapDbToLesson(row)) });
     }
 
     const lesson: Lesson = body;

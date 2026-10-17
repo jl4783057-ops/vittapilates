@@ -46,17 +46,19 @@ function ProgramsContent() {
       .sort((a, b) => a.order - b.order);
   }, [subcategories, currentCategoryData]);
 
-  // Dados da subcategoria selecionada
+  // Dados da subcategoria selecionada (inclui busca de subcategoria mesmo se indisponível para renderizar mensagem correta)
   const currentSubcategoryData = useMemo(() => {
     if (!selectedSubcategory) return null;
-    return linkedSubcategories.find(
-      (s) => s.id === selectedSubcategory || s.slug === selectedSubcategory
+    return subcategories.find(
+      (s) =>
+        (s.id === selectedSubcategory || s.slug === selectedSubcategory) &&
+        (!currentCategoryData || s.categoryId === currentCategoryData.id)
     );
-  }, [linkedSubcategories, selectedSubcategory]);
+  }, [subcategories, selectedSubcategory, currentCategoryData]);
 
   // Aulas vinculadas estritamente à subcategoria aberta
   const subcategoryLessons = useMemo(() => {
-    if (!currentCategoryData || !currentSubcategoryData) return [];
+    if (!currentCategoryData || !currentSubcategoryData || !currentCategoryData.published || !currentSubcategoryData.published) return [];
     return lessons.filter(
       (l) =>
         l.status === "publicado" &&
@@ -94,7 +96,99 @@ function ProgramsContent() {
   };
 
   /* =========================================================================
-     ETAPA 3: LISTAGEM DE AULAS DA SUBCATEGORIA ESPECÍFICA
+     CASO 1: CATEGORIA INDISPONÍVEL / EM ATUALIZAÇÃO
+     ========================================================================= */
+  if (currentCategoryData && !currentCategoryData.published) {
+    return (
+      <div className="space-y-6 sm:space-y-7 animate-fade-in py-1">
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={handleBackToCategories}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#827B77] hover:text-[#292321] transition cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4 text-[#B77D82]" />
+            <span>Voltar para todas as categorias</span>
+          </button>
+        </div>
+
+        <div className="bg-white rounded-[28px] border border-[#EADBCE] p-8 sm:p-12 text-center space-y-4 shadow-2xs max-w-xl mx-auto">
+          <div className="w-14 h-14 rounded-full bg-[#FAF7F2] text-[#B77D82] mx-auto flex items-center justify-center border border-[#EADBCE]">
+            <Sparkles className="w-6 h-6" />
+          </div>
+          <div className="space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#B77D82] block">
+              {currentCategoryData.name}
+            </span>
+            <h2 className="font-serif text-2xl sm:text-3xl font-bold text-[#292321]">
+              Em atualização
+            </h2>
+            <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-sm mx-auto">
+              Em breve teremos aulas nesta categoria. Estamos preparando práticas especiais para o seu momento.
+            </p>
+          </div>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={handleBackToCategories}
+              className="px-5 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition shadow-xs cursor-pointer"
+            >
+              Explorar outras categorias
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* =========================================================================
+     CASO 2: SUBCATEGORIA INDISPONÍVEL / EM ATUALIZAÇÃO
+     ========================================================================= */
+  if (currentCategoryData && currentSubcategoryData && !currentSubcategoryData.published) {
+    return (
+      <div className="space-y-6 sm:space-y-7 animate-fade-in py-1">
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={handleBackToSubcategories}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#827B77] hover:text-[#292321] transition cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4 text-[#B77D82]" />
+            <span>Voltar aos temas de {currentCategoryData.name}</span>
+          </button>
+        </div>
+
+        <div className="bg-white rounded-[28px] border border-[#EADBCE] p-8 sm:p-12 text-center space-y-4 shadow-2xs max-w-xl mx-auto">
+          <div className="w-14 h-14 rounded-full bg-[#FAF7F2] text-[#B77D82] mx-auto flex items-center justify-center border border-[#EADBCE]">
+            <Sparkles className="w-6 h-6" />
+          </div>
+          <div className="space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#B77D82] block">
+              {currentCategoryData.name} • {currentSubcategoryData.name}
+            </span>
+            <h2 className="font-serif text-2xl sm:text-3xl font-bold text-[#292321]">
+              Em atualização
+            </h2>
+            <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-sm mx-auto">
+              Em breve teremos aulas neste tema. Estamos finalizando as práticas para disponibilizar para você.
+            </p>
+          </div>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={handleBackToSubcategories}
+              className="px-5 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition shadow-xs cursor-pointer"
+            >
+              Ver outros temas disponíveis
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* =========================================================================
+     ETAPA 3: LISTAGEM DE AULAS DA SUBCATEGORIA ATIVA
      ========================================================================= */
   if (currentCategoryData && currentSubcategoryData) {
     return (
@@ -109,10 +203,6 @@ function ProgramsContent() {
             <ChevronLeft className="w-4 h-4 text-[#B77D82]" />
             <span>Voltar aos temas de {currentCategoryData.name}</span>
           </button>
-
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#B77D82] bg-white border border-[#EADBCE] px-3 py-1 rounded-full shadow-2xs">
-            {subcategoryLessons.length} {subcategoryLessons.length === 1 ? "aula" : "aulas"}
-          </span>
         </div>
 
         {/* Cabeçalho da Subcategoria Aberta */}
@@ -138,10 +228,10 @@ function ProgramsContent() {
                 <Play className="w-5 h-5 opacity-60 ml-0.5" />
               </div>
               <h3 className="font-serif font-bold text-base text-[#292321]">
-                Nenhuma aula cadastrada neste tema ainda
+                Em atualização — em breve teremos aulas nesta subcategoria.
               </h3>
               <p className="text-xs text-[#827B77] max-w-sm mx-auto leading-relaxed">
-                As novas aulas cadastradas nesta subcategoria aparecerão aqui automaticamente.
+                As novas aulas cadastradas aparecerão aqui automaticamente.
               </p>
             </div>
           ) : (
@@ -271,13 +361,13 @@ function ProgramsContent() {
           {linkedSubcategories.length === 0 ? (
             <div className="bg-white rounded-[24px] border border-[#EADBCE] p-8 text-center space-y-2 shadow-2xs">
               <div className="w-10 h-10 rounded-full bg-[#FAF7F2] text-[#B77D82] mx-auto flex items-center justify-center">
-                <Layers className="w-5 h-5" />
+                <Sparkles className="w-5 h-5" />
               </div>
               <h3 className="font-serif font-bold text-sm sm:text-base text-[#292321]">
-                Nenhum tema específico cadastrado nesta categoria
+                Em atualização — em breve teremos aulas nesta categoria.
               </h3>
               <p className="text-xs text-[#827B77] max-w-sm mx-auto leading-relaxed">
-                Esta categoria ainda não possui divisões ativas no momento.
+                Estamos organizando os novos temas e sequências guiadas para este foco.
               </p>
             </div>
           ) : (

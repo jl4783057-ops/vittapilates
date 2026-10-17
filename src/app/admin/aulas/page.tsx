@@ -31,6 +31,8 @@ export default function AdminLessonsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [videoUploadProgress, setVideoUploadProgress] = useState<number | null>(null);
+  const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
 
   // Carregar todas as aulas do Supabase (inclusive rascunhos) com permissão administrativa
   const fetchAdminLessons = useCallback(async () => {
@@ -65,6 +67,8 @@ export default function AdminLessonsPage() {
     materials: string;
     thumbnailUrl: string;
     videoUrl: string;
+    videoProvider: "external" | "r2";
+    videoStorageKey: string;
     order: number;
     status: LessonStatus;
     tagsString: string;
@@ -80,6 +84,8 @@ export default function AdminLessonsPage() {
     materials: "Tapete de Pilates (Mat)",
     thumbnailUrl: "",
     videoUrl: "",
+    videoProvider: "external",
+    videoStorageKey: "",
     order: 1,
     status: "publicado",
     tagsString: "postura, rotina da manhã",
@@ -100,6 +106,8 @@ export default function AdminLessonsPage() {
     const firstCat = categories[0]?.id || "cat-1";
     const firstSub = subcategories.find((s) => s.categoryId === firstCat)?.id || "";
     setModalError(null);
+    setVideoUploadProgress(null);
+    setVideoUploadError(null);
     setFormData({
       title: "",
       description: "",
@@ -112,6 +120,8 @@ export default function AdminLessonsPage() {
       materials: "Tapete de Pilates (Mat)",
       thumbnailUrl: "",
       videoUrl: "",
+      videoProvider: "external",
+      videoStorageKey: "",
       order: lessons.length + 1,
       status: "publicado",
       tagsString: "postura, bem-estar",
@@ -121,6 +131,8 @@ export default function AdminLessonsPage() {
 
   const handleOpenEdit = (lesson: Lesson) => {
     setModalError(null);
+    setVideoUploadProgress(null);
+    setVideoUploadError(null);
     setEditingLesson(lesson);
     setFormData({
       title: lesson.title,
@@ -134,14 +146,90 @@ export default function AdminLessonsPage() {
       materials: lesson.materials,
       thumbnailUrl: lesson.thumbnailUrl,
       videoUrl: lesson.videoUrl,
+      videoProvider: lesson.videoProvider || "external",
+      videoStorageKey: lesson.videoStorageKey || "",
       order: lesson.order,
       status: lesson.status,
       tagsString: lesson.tags?.join(", ") || "",
     });
   };
 
+  const uploadVideoToR2 = async (file: File) => {
+    setVideoUploadError(null);
+    const extension = file.name.split(".").pop()?.toLowerCase() || "";
+    if (!("mp4 webm mov".split(" ").includes(extension))) {
+      setVideoUploadError("Escolha um arquivo MP4, WebM ou MOV.");
+      return;
+    }
+    if (file.size <= 0 || file.size > 5 * 1024 * 1024 * 1024) {
+      setVideoUploadError("O vídeo deve ter até 5 GB.");
+      return;
+    }
+
+    let upload: { key: string; uploadId: string; partSize: number; partCount: number } | null = null;
+    try {
+      setVideoUploadProgress(0);
+      const initiate = await fetch("/api/admin/video-uploads", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "initiate", extension, size: file.size }),
+      });
+      const initResult = await initiate.json();
+      if (!initiate.ok) throw new Error(initResult.error || "Não foi possível iniciar o envio.");
+      upload = initResult;
+      const activeUpload = upload;
+      if (!activeUpload) throw new Error("Não foi possível iniciar o envio.");
+
+      const parts: { ETag: string; PartNumber: number }[] = [];
+      let nextPart = 1;
+      let finishedParts = 0;
+      const worker = async () => {
+        while (true) {
+          const partNumber = nextPart++;
+          if (partNumber > activeUpload.partCount) return;
+          const signResponse = await fetch("/api/admin/video-uploads", {
+            method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "sign-part", key: activeUpload.key, uploadId: activeUpload.uploadId, partNumber, partCount: activeUpload.partCount }),
+          });
+          const signed = await signResponse.json();
+          if (!signResponse.ok || !signed.url) throw new Error(signed.error || "Não foi possível preparar uma parte do vídeo.");
+          const start = (partNumber - 1) * activeUpload.partSize;
+          const end = Math.min(start + activeUpload.partSize, file.size);
+          const putResponse = await fetch(signed.url, { method: "PUT", body: file.slice(start, end) });
+          const etag = putResponse.headers.get("ETag");
+          if (!putResponse.ok || !etag) throw new Error("O R2 recusou uma parte do vídeo. Confira a configuração CORS do bucket.");
+          parts.push({ ETag: etag, PartNumber: partNumber });
+          finishedParts++;
+          setVideoUploadProgress(Math.round((finishedParts / activeUpload.partCount) * 100));
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(3, activeUpload.partCount) }, () => worker()));
+
+      const complete = await fetch("/api/admin/video-uploads", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "complete", key: activeUpload.key, uploadId: activeUpload.uploadId, parts }),
+      });
+      const completed = await complete.json();
+      if (!complete.ok) throw new Error(completed.error || "Não foi possível finalizar o envio.");
+      setFormData((current) => ({ ...current, videoProvider: "r2", videoStorageKey: completed.key, videoUrl: "" }));
+      setVideoUploadProgress(100);
+    } catch (error) {
+      if (upload) {
+        await fetch("/api/admin/video-uploads", {
+          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "abort", key: upload.key, uploadId: upload.uploadId }),
+        }).catch(() => undefined);
+      }
+      setVideoUploadError(error instanceof Error ? error.message : "Falha ao enviar o vídeo.");
+      setVideoUploadProgress(null);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.videoProvider === "r2" && !formData.videoStorageKey) {
+      setModalError("Envie o vídeo ao R2 antes de salvar esta aula.");
+      return;
+    }
     setIsSaving(true);
     setModalError(null);
 
@@ -163,6 +251,8 @@ export default function AdminLessonsPage() {
       materials: formData.materials,
       thumbnailUrl: formData.thumbnailUrl,
       videoUrl: formData.videoUrl,
+      videoProvider: formData.videoProvider,
+      videoStorageKey: formData.videoStorageKey,
       order: Number(formData.order),
       status: formData.status,
       tags,
@@ -650,20 +740,29 @@ export default function AdminLessonsPage() {
                 helperText="Clique em 'Enviar imagem' para selecionar a capa da aula do seu Mac ou Windows (JPG, PNG ou WebP até 5 MB)."
               />
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase text-[#827B77] block">
-                  URL do Vídeo (Streaming Seguro / Cloudflare Stream)
-                </label>
-                <input
-                  type="url"
-                  value={formData.videoUrl}
-                  onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
-                  required
-                />
-                <p className="text-[10px] text-[#827B77]">
-                  Vídeos hospedados em serviço dedicado (Cloudflare Stream, Vimeo, CDN). Nunca guardados no banco PostgreSQL.
-                </p>
+              <div className="space-y-3 rounded-2xl border border-[#EADBCE] bg-[#FAF7F2] p-4">
+                <label className="text-[11px] font-bold uppercase text-[#827B77] block">Vídeo da aula</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setFormData({ ...formData, videoProvider: "r2", videoUrl: "" })} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${formData.videoProvider === "r2" ? "border-[#B77D82] bg-white text-[#9C6268]" : "border-[#EADBCE] text-[#827B77]"}`}>
+                    Enviar vídeo privado ao R2
+                  </button>
+                  <button type="button" onClick={() => setFormData({ ...formData, videoProvider: "external", videoStorageKey: "" })} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${formData.videoProvider === "external" ? "border-[#B77D82] bg-white text-[#9C6268]" : "border-[#EADBCE] text-[#827B77]"}`}>
+                    Usar link externo
+                  </button>
+                </div>
+                {formData.videoProvider === "r2" ? (
+                  <div className="space-y-2">
+                    <input type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" disabled={videoUploadProgress !== null && videoUploadProgress < 100} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadVideoToR2(file); event.currentTarget.value = ""; }} className="block w-full text-xs text-[#827B77] file:mr-3 file:rounded-full file:border-0 file:bg-[#B77D82] file:px-4 file:py-2 file:font-semibold file:text-white" />
+                    {formData.videoStorageKey ? <p className="text-[10px] text-emerald-800">Vídeo privado pronto: {formData.videoStorageKey.split("/").pop()}</p> : <p className="text-[10px] text-[#827B77]">MP4, WebM ou MOV, até 5 GB. O arquivo permanece privado e só toca para alunas com acesso ativo.</p>}
+                    {videoUploadProgress !== null && <div className="space-y-1"><div className="h-2 overflow-hidden rounded-full bg-white"><div className="h-full bg-[#B77D82] transition-all" style={{ width: `${videoUploadProgress}%` }} /></div><p className="text-[10px] text-[#827B77]">{videoUploadProgress === 100 ? "Envio concluído. Salve a aula para publicar a alteração." : `Enviando vídeo: ${videoUploadProgress}%`}</p></div>}
+                    {videoUploadError && <p role="alert" className="text-xs text-red-700">{videoUploadError}</p>}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <input type="url" value={formData.videoUrl} onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })} placeholder="https://..." className="w-full rounded-xl border border-[#EADBCE] bg-white px-3.5 py-2 text-xs text-[#292321]" required />
+                    <p className="text-[10px] text-[#827B77]">Links externos existentes continuam funcionando normalmente.</p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -681,7 +780,7 @@ export default function AdminLessonsPage() {
 
               <button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || (videoUploadProgress !== null && videoUploadProgress < 100)}
                 className="w-full py-3 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
               >
                 {isSaving ? (

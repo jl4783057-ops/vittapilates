@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, Suspense } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useApp } from "@/lib/store/context";
@@ -23,15 +23,54 @@ function LessonPlayerContent() {
   const lessonId = params?.id as string;
 
   const { lessons, categories, subcategories, currentUser, toggleLessonCompletion } = useApp();
+  const [playbackUrl, setPlaybackUrl] = useState("");
+  const [playbackError, setPlaybackError] = useState("");
+  const [isLoadingPlayback, setIsLoadingPlayback] = useState(false);
+  const [playbackRetry, setPlaybackRetry] = useState(0);
 
-  const lesson = lessons.find((l) => l.id === lessonId) || lessons[0];
+  const lesson = lessons.find((l) => l.id === lessonId);
   const category = categories.find((c) => c.id === lesson?.categoryId);
   const subcategory = subcategories.find((s) => s.id === lesson?.subcategoryId);
 
+  const isAvailable = Boolean(
+    lesson &&
+    (!category || category.published) &&
+    (!subcategory || subcategory.published)
+  );
+
   const isCompleted = currentUser?.completedLessonIds?.includes(lesson?.id || "") || false;
 
-  // Próxima aula na ordem da categoria ou catálogo
-  const currentIndex = lessons.findIndex((l) => l.id === lesson?.id);
+  useEffect(() => {
+    if (!lesson || lesson.videoProvider !== "r2") {
+      setPlaybackUrl(lesson?.videoUrl || "");
+      setPlaybackError("");
+      setIsLoadingPlayback(false);
+      return;
+    }
+    const controller = new AbortController();
+    setPlaybackUrl("");
+    setPlaybackError("");
+    setIsLoadingPlayback(true);
+    fetch(`/api/aluna/lessons/${encodeURIComponent(lesson.id)}/playback`, {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Não foi possível liberar o vídeo.");
+        setPlaybackUrl(result.url);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setPlaybackError(error instanceof Error ? error.message : "Não foi possível carregar o vídeo.");
+      })
+      .finally(() => setIsLoadingPlayback(false));
+    return () => controller.abort();
+  }, [lesson?.id, lesson?.videoProvider, lesson?.videoUrl, playbackRetry]);
+
+  // Próxima aula disponível na ordem da categoria ou catálogo
+  const currentIndex = lesson ? lessons.findIndex((l) => l.id === lesson.id) : -1;
   const nextLesson =
     lessons.slice(currentIndex + 1).find((l) => l.status === "publicado") ||
     lessons.find((l) => l.id !== lesson?.id && l.status === "publicado");
@@ -55,16 +94,28 @@ function LessonPlayerContent() {
     }
   };
 
-  if (!lesson) {
+  if (!lesson || !isAvailable) {
     return (
-      <div className="py-12 text-center space-y-4">
-        <p className="text-sm text-[#827B77]">Aula não encontrada.</p>
-        <Link
-          href="/aluna/programas"
-          className="text-xs font-semibold text-[#B77D82] underline"
-        >
-          Voltar para a biblioteca
-        </Link>
+      <div className="py-12 px-4 text-center space-y-4 max-w-md mx-auto animate-fade-in">
+        <div className="w-14 h-14 rounded-full bg-white text-[#B77D82] mx-auto flex items-center justify-center border border-[#EADBCE] shadow-xs">
+          <Sparkles className="w-6 h-6" />
+        </div>
+        <div className="space-y-1.5">
+          <h2 className="font-serif font-bold text-xl text-[#292321]">
+            Aula em atualização
+          </h2>
+          <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed">
+            Esta aula pertence a uma categoria ou tema que está temporariamente em atualização. Em breve o conteúdo estará disponível para você.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            href="/aluna/programas"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition shadow-xs"
+          >
+            Voltar para a biblioteca
+          </Link>
+        </div>
       </div>
     );
   }
@@ -89,16 +140,28 @@ function LessonPlayerContent() {
 
       {/* Container do Player de Vídeo */}
       <section aria-label="Player de vídeo" className="relative rounded-3xl overflow-hidden bg-black aspect-video shadow-md border border-[#EADBCE]">
-        <video
-          key={lesson.videoUrl}
-          src={lesson.videoUrl}
-          controls
-          poster={lesson.thumbnailUrl}
-          playsInline
-          className="w-full h-full object-contain"
-        >
-          Seu navegador não suporta a reprodução deste vídeo.
-        </video>
+        {isLoadingPlayback ? (
+          <div className="absolute inset-0 flex items-center justify-center text-white text-sm">Preparando sua aula…</div>
+        ) : playbackError ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-5 text-center text-white text-sm">
+            <span>{playbackError}</span>
+            <button onClick={() => setPlaybackRetry((value) => value + 1)} className="rounded-full bg-white/15 px-4 py-2">Tentar novamente</button>
+          </div>
+        ) : playbackUrl ? (
+          <video
+            key={playbackUrl}
+            src={playbackUrl}
+            controls
+            poster={lesson.thumbnailUrl}
+            playsInline
+            preload="metadata"
+            className="w-full h-full object-contain"
+          >
+            Seu navegador não suporta a reprodução deste vídeo.
+          </video>
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-white text-sm">O vídeo desta aula ainda não foi configurado.</div>
+        )}
       </section>
 
       {/* Ações e Conclusão */}

@@ -16,9 +16,29 @@ import {
 export default function StudentMyWorkoutsPage() {
   const { currentUser, lessons, categories, subcategories } = useApp();
 
+  const activeCategoryIds = useMemo(
+    () => new Set(categories.filter((c) => c.published).map((c) => c.id)),
+    [categories]
+  );
+  const activeSubcategoryIds = useMemo(
+    () =>
+      new Set(
+        subcategories
+          .filter((s) => s.published && activeCategoryIds.has(s.categoryId))
+          .map((s) => s.id)
+      ),
+    [subcategories, activeCategoryIds]
+  );
+
   const publishedLessons = useMemo(
-    () => lessons.filter((l) => l.status === "publicado"),
-    [lessons]
+    () =>
+      lessons.filter(
+        (l) =>
+          l.status === "publicado" &&
+          activeCategoryIds.has(l.categoryId) &&
+          activeSubcategoryIds.has(l.subcategoryId)
+      ),
+    [lessons, activeCategoryIds, activeSubcategoryIds]
   );
 
   const completedLessonIds = useMemo(

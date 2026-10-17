@@ -400,6 +400,7 @@ export async function POST(request: Request) {
         email,
         name,
         redirectTo: `${siteUrl(request)}/definir-senha`,
+        forceEmail: true,
       });
 
       // Atualiza o registro do pedido com status operacional do envio do e-mail

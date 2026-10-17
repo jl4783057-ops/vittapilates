@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSupabaseAdminConfigured, getSupabaseAdmin } from "@/lib/supabase/admin";
-import { isAdminRequest, generateStudentPasswordLink, siteUrl } from "@/lib/access";
+import {
+  isAdminRequest,
+  generateStudentPasswordLink,
+  ensureAccountAndSendPasswordLink,
+  siteUrl,
+} from "@/lib/access";
 import { User, SubscriptionStatus, SubscriptionPlan } from "@/types";
 
 export function mapDbProfileToUser(row: Record<string, unknown>): User {
@@ -46,7 +51,36 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Erro ao consultar alunas no banco." }, { status: 500 });
     }
 
-    const students = (profiles || []).map(mapDbProfileToUser);
+    const { data: orders } = await admin
+      .from("cakto_orders")
+      .select("email, event, payload, received_at")
+      .order("received_at", { ascending: false });
+
+    const orderMap: Record<string, { emailDeliveryStatus?: string; error?: string }> = {};
+    (orders || []).forEach((o) => {
+      const em = (o.email || "").toLowerCase().trim();
+      if (!orderMap[em] && o.payload && typeof o.payload === "object") {
+        const p = o.payload as Record<string, unknown>;
+        if (p.emailDelivery && typeof p.emailDelivery === "object") {
+          const ed = p.emailDelivery as Record<string, unknown>;
+          orderMap[em] = {
+            emailDeliveryStatus: typeof ed.status === "string" ? ed.status : undefined,
+            error: typeof ed.error === "string" ? ed.error : undefined,
+          };
+        }
+      }
+    });
+
+    const students = (profiles || []).map((p) => {
+      const user = mapDbProfileToUser(p);
+      const delivery = orderMap[(user.email || "").toLowerCase().trim()];
+      return {
+        ...user,
+        emailDeliveryStatus: delivery?.emailDeliveryStatus || null,
+        emailDeliveryError: delivery?.error || null,
+      };
+    });
+
     return NextResponse.json({ configured: true, students }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("Erro interno na API de alunas:", err);
@@ -126,6 +160,26 @@ export async function POST(request: NextRequest) {
       const redirectTo = `${siteUrl(request)}/definir-senha`;
       const link = await generateStudentPasswordLink(email, redirectTo);
       return NextResponse.json({ success: true, link });
+    }
+
+    if (action === "resend_invite_email") {
+      if (!email) {
+        return NextResponse.json({ error: "E-mail da aluna obrigatório." }, { status: 400 });
+      }
+      const redirectTo = `${siteUrl(request)}/definir-senha`;
+      const account = await ensureAccountAndSendPasswordLink({
+        email,
+        name: typeof body.name === "string" ? body.name : email.split("@")[0],
+        redirectTo,
+        forceEmail: true,
+      });
+
+      return NextResponse.json({
+        success: true,
+        emailSent: account.emailSent,
+        emailDeliveryStatus: account.emailDeliveryStatus,
+        error: account.emailError,
+      });
     }
 
     return NextResponse.json({ error: "Ação não reconhecida." }, { status: 400 });

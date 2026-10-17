@@ -4,21 +4,35 @@
 -- ================================================================
 --
 -- Estados:
--- 1. 'available' (Disponível): aparece normalmente para as alunas, aulas acessíveis.
--- 2. 'updating' (Em atualização): visível no site com banner esmaecido/cinza e aviso;
---    aulas e subcategorias vinculadas bloqueadas para acesso.
--- 3. 'hidden' (Oculta): completamente invisível na área das alunas e inacessível por URL.
+-- 1. 'available' (Disponível): visível e aulas acessíveis.
+-- 2. 'updating' (Em atualização): visível com banner cinza/esmaecido e aviso; aulas bloqueadas.
+-- 3. 'hidden' (Oculta): não aparece para as alunas e inacessível por URL.
 --
--- Retrocompatibilidade:
--- O campo booleano 'published' é mantido e sincronizado:
--- published = (status != 'hidden'). Dessa forma, 'available' e 'updating'
--- têm published = true, enquanto 'hidden' tem published = false.
+-- Preservação de dados existentes:
+-- Adiciona a coluna 'status' sem default imediato, permitindo que
+-- o backfill distinga registros que estavam com published = false para marcá-los como 'hidden'.
+-- Registros com published = true tornam-se 'available'.
+-- Após o backfill, o default 'available' e a restrição NOT NULL são aplicados de forma segura e idempotente.
 -- ================================================================
 
--- 1. Tabela de Categorias: adiciona coluna status
+-- 1. Tabela de Categorias: Adição segura da coluna status
 ALTER TABLE public.categories
-  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'available';
+  ADD COLUMN IF NOT EXISTS status TEXT;
 
+-- Backfill das categorias existentes respeitando published = false -> 'hidden'
+UPDATE public.categories
+SET status = CASE
+  WHEN published = false THEN 'hidden'
+  ELSE 'available'
+END
+WHERE status IS NULL OR status NOT IN ('available', 'updating', 'hidden');
+
+-- Define default e NOT NULL após o preenchimento de todos os registros
+ALTER TABLE public.categories
+  ALTER COLUMN status SET DEFAULT 'available',
+  ALTER COLUMN status SET NOT NULL;
+
+-- Restrição de valores permitidos
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -32,10 +46,24 @@ BEGIN
   END IF;
 END $$;
 
--- 2. Tabela de Subcategorias: adiciona coluna status
+-- 2. Tabela de Subcategorias: Adição segura da coluna status
 ALTER TABLE public.subcategories
-  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'available';
+  ADD COLUMN IF NOT EXISTS status TEXT;
 
+-- Backfill das subcategorias existentes respeitando published = false -> 'hidden'
+UPDATE public.subcategories
+SET status = CASE
+  WHEN published = false THEN 'hidden'
+  ELSE 'available'
+END
+WHERE status IS NULL OR status NOT IN ('available', 'updating', 'hidden');
+
+-- Define default e NOT NULL após o preenchimento
+ALTER TABLE public.subcategories
+  ALTER COLUMN status SET DEFAULT 'available',
+  ALTER COLUMN status SET NOT NULL;
+
+-- Restrição de valores permitidos
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -49,20 +77,7 @@ BEGIN
   END IF;
 END $$;
 
--- 3. Migração segura e compatível dos dados existentes:
--- Se o item estava despublicado (published = false), migra para 'hidden'.
--- Se estava publicado (published = true), mantém 'available'.
-UPDATE public.categories
-SET status = CASE WHEN published = false THEN 'hidden' ELSE 'available' END
-WHERE status IS NULL OR status NOT IN ('available', 'updating', 'hidden');
-
-UPDATE public.subcategories
-SET status = CASE WHEN published = false THEN 'hidden' ELSE 'available' END
-WHERE status IS NULL OR status NOT IN ('available', 'updating', 'hidden');
-
--- 4. Atualização das políticas de RLS para leitura pública
--- Permite leitura de categorias em 'available' e 'updating' por qualquer pessoa/aluna.
--- Categorias 'hidden' só podem ser lidas por administradoras.
+-- 3. Atualização das políticas de RLS para leitura pública
 DROP POLICY IF EXISTS "Leitura pública de categorias publicadas" ON public.categories;
 CREATE POLICY "Leitura pública de categorias publicadas" ON public.categories
   FOR SELECT USING (
@@ -71,8 +86,6 @@ CREATE POLICY "Leitura pública de categorias publicadas" ON public.categories
     OR (SELECT public.current_user_is_admin())
   );
 
--- Permite leitura de subcategorias em 'available' e 'updating'.
--- Subcategorias 'hidden' só podem ser lidas por administradoras.
 DROP POLICY IF EXISTS "Leitura pública de subcategorias publicadas" ON public.subcategories;
 CREATE POLICY "Leitura pública de subcategorias publicadas" ON public.subcategories
   FOR SELECT USING (

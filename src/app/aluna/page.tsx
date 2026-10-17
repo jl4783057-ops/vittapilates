@@ -2,285 +2,218 @@
 
 import React from "react";
 import Link from "next/link";
-import { useApp } from "@/lib/store/context";
-import { Category, Subcategory, PublicationStatus } from "@/types";
-import {
-  Clock,
-  Play,
-  ArrowRight,
-  Compass,
-  Sparkles,
-  Clock3,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
-function getBahiaDayNumber() {
-  try {
-    const dateInBahia = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Bahia",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-    return Math.floor(Date.parse(`${dateInBahia}T00:00:00Z`) / 86_400_000);
-  } catch {
-    return Math.floor(Date.now() / 86_400_000);
-  }
+function BellAnnouncementIcon() {
+  return (
+    <div className="relative w-16 h-16 sm:w-20 sm:h-20 shrink-0 flex items-center justify-center">
+      <svg
+        viewBox="0 0 72 72"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="w-full h-full drop-shadow-xs select-none"
+        aria-hidden="true"
+      >
+        {/* Dynamic motion lines on the left */}
+        <path
+          d="M13 29C10 32 8 36 8 40"
+          stroke="#C89196"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+        <path
+          d="M9 23C7 26 5 30 5 34"
+          stroke="#C89196"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          opacity="0.65"
+        />
+        <path
+          d="M17 19L11 16"
+          stroke="#C89196"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+
+        {/* Bell group with slight tilt */}
+        <g transform="rotate(-12 36 36)">
+          {/* Top Ring/Loop */}
+          <ellipse cx="36" cy="14" rx="4" ry="3" fill="#C89196" />
+          <path
+            d="M36 15.5V19.5"
+            stroke="#B77D82"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+
+          {/* Bell Body */}
+          <path
+            d="M26 25C26 19.5 30.5 15 36 15C41.5 15 46 19.5 46 25V37C46 41 51 44 52 47C52.5 48.5 51.5 50 49.5 50H22.5C20.5 50 19.5 48.5 20 47C21 44 26 41 26 37V25Z"
+            fill="url(#bellGradient)"
+          />
+
+          {/* Clapper */}
+          <ellipse cx="36" cy="52" rx="4.5" ry="3.5" fill="#8E4850" />
+
+          {/* Subtle Sheen Highlight */}
+          <path
+            d="M29 26C29 22 31.5 19 34 18.5"
+            stroke="#FFFFFF"
+            strokeWidth="2"
+            strokeLinecap="round"
+            opacity="0.55"
+          />
+        </g>
+
+        <defs>
+          <linearGradient id="bellGradient" x1="20" y1="15" x2="52" y2="50" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#ECAAB0" />
+            <stop offset="0.55" stopColor="#B77D82" />
+            <stop offset="1" stopColor="#9C5D64" />
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+  );
 }
 
-function getCategoryStatus(c?: Category | null): PublicationStatus {
-  if (!c) return "hidden";
-  if (c.status === "available" || c.status === "updating" || c.status === "hidden") {
-    return c.status;
-  }
-  return c.published === false ? "hidden" : "available";
-}
+function CalendarAnnouncementIcon() {
+  return (
+    <div className="relative w-16 h-16 sm:w-20 sm:h-20 shrink-0 flex items-center justify-center">
+      <svg
+        viewBox="0 0 72 72"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="w-full h-full drop-shadow-xs select-none"
+        aria-hidden="true"
+      >
+        {/* Sparkles / motion lines on top-right */}
+        <path
+          d="M58 16L63 13"
+          stroke="#C89196"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+        <path
+          d="M60 23L65 24"
+          stroke="#C89196"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+        <path
+          d="M53 11L55 6"
+          stroke="#C89196"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          opacity="0.65"
+        />
 
-function getSubcategoryStatus(s?: Subcategory | null, parent?: Category | null): PublicationStatus {
-  if (!s) return "hidden";
-  const parentStatus = getCategoryStatus(parent);
-  if (parentStatus === "hidden") return "hidden";
+        {/* Calendar Body with subtle tilt */}
+        <g transform="rotate(-6 36 38)">
+          {/* Main Card */}
+          <rect
+            x="18"
+            y="20"
+            width="36"
+            height="36"
+            rx="8"
+            fill="url(#calGradient)"
+          />
 
-  const rawStatus =
-    s.status === "available" || s.status === "updating" || s.status === "hidden"
-      ? s.status
-      : s.published === false
-      ? "hidden"
-      : "available";
+          {/* Header Bar */}
+          <path
+            d="M18 28C18 23.58 21.58 20 26 20H46C50.42 20 54 23.58 54 28V30H18V28Z"
+            fill="#8E4850"
+          />
 
-  if (rawStatus === "hidden") return "hidden";
-  if (parentStatus === "updating") return "updating";
-  return rawStatus;
+          {/* Spiral / Binding Rings */}
+          <rect x="25" y="16" width="3.5" height="7" rx="1.75" fill="#FAF7F2" />
+          <rect x="43" y="16" width="3.5" height="7" rx="1.75" fill="#FAF7F2" />
+
+          {/* Days Grid Dots */}
+          <circle cx="27" cy="37" r="1.8" fill="#FFFFFF" opacity="0.9" />
+          <circle cx="36" cy="37" r="1.8" fill="#FFFFFF" opacity="0.9" />
+          <circle cx="45" cy="37" r="1.8" fill="#FFFFFF" opacity="0.9" />
+          <circle cx="27" cy="45" r="1.8" fill="#FFFFFF" opacity="0.9" />
+          <circle cx="36" cy="45" r="1.8" fill="#FFFFFF" opacity="0.9" />
+          <circle cx="45" cy="45" r="1.8" fill="#FFFFFF" opacity="0.9" />
+        </g>
+
+        <defs>
+          <linearGradient id="calGradient" x1="18" y1="20" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#ECAAB0" />
+            <stop offset="0.55" stopColor="#B77D82" />
+            <stop offset="1" stopColor="#9C5D64" />
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+  );
 }
 
 export default function StudentDashboardPage() {
-  const { currentUser, lessons, categories, subcategories } = useApp();
-
-  const categoryMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
-
-  // Apenas categorias e subcategorias 100% disponíveis liberam aulas para reprodução
-  const availableCategoryIds = new Set(
-    categories.filter((c) => getCategoryStatus(c) === "available").map((c) => c.id)
-  );
-
-  const availableSubcategoryIds = new Set(
-    subcategories
-      .filter((s) => {
-        const parent = categoryMap.get(s.categoryId);
-        return getSubcategoryStatus(s, parent) === "available";
-      })
-      .map((s) => s.id)
-  );
-
-  // Aulas ativas: estritamente vinculadas a itens Disponíveis
-  const publishedLessons = lessons.filter(
-    (lesson) =>
-      lesson.status === "publicado" &&
-      availableCategoryIds.has(lesson.categoryId) &&
-      availableSubcategoryIds.has(lesson.subcategoryId)
-  );
-
-  // Aula para continuar ou primeira aula disponível
-  const currentLesson =
-    publishedLessons.find((lesson) => lesson.id === currentUser?.lastLessonId) ||
-    publishedLessons[0];
-
-  // Aula recomendada para hoje (outra aula do catálogo real, se houver)
-  const recommendationOptions = publishedLessons.filter((lesson) => lesson.id !== currentLesson?.id);
-  const recommendedLesson = recommendationOptions.length > 0
-    ? recommendationOptions[getBahiaDayNumber() % recommendationOptions.length]
-    : null;
-
-  // Categorias ativas no carrossel da home (exclui ocultas)
-  const visibleCategories = categories
-    .filter((category) => getCategoryStatus(category) !== "hidden")
-    .sort((a, b) => a.order - b.order);
-
   return (
-    <div className="space-y-6 sm:space-y-8 animate-fade-in py-1">
+    <div className="max-w-md mx-auto space-y-6 sm:space-y-7 animate-fade-in py-2 sm:py-3">
       {/* 1. Saudação acolhedora e editorial */}
-      <section className="space-y-1.5 pt-1 sm:pt-2">
-        <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-medium tracking-tight text-[#292321] leading-tight">
+      <section className="space-y-1.5 pt-1">
+        <h1 className="font-serif text-3xl sm:text-4xl lg:text-[42px] font-medium tracking-tight text-[#292321] leading-tight">
           Seu momento começa aqui.
         </h1>
-        <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-md font-sans">
+        <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed font-sans">
           Movimento, bem-estar e mais presença para todos os seus dias.
         </p>
       </section>
 
-      {/* 2. Bloco de Destaque: Continuar Treino com Play Circular */}
-      {currentLesson ? (
-        <section aria-label="Continuar treino">
-          <article className="relative rounded-[28px] overflow-hidden border border-[#EADBCE] bg-[#F3EAE3] shadow-sm group hover:border-[#B77D82]/50 transition-all">
-            <div className="relative aspect-[16/10] sm:aspect-[21/9] w-full overflow-hidden">
-              {currentLesson.thumbnailUrl ? (
-                <img
-                  src={currentLesson.thumbnailUrl}
-                  alt={currentLesson.title}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-103"
-                />
-              ) : (
-                <div className="w-full h-full bg-[#EADFD5] flex items-center justify-center text-[#B77D82]">
-                  <Compass className="w-12 h-12 opacity-40" />
-                </div>
-              )}
-              {/* Gradiente escuro para legibilidade */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/10" />
+      {/* 2. Card: Mural de anúncios */}
+      <section
+        aria-label="Mural de anúncios"
+        className="rounded-[28px] sm:rounded-[32px] bg-white border border-[#EADBCE] p-4 sm:p-6 shadow-[0_4px_24px_rgba(41,35,33,0.04)] space-y-3 sm:space-y-4"
+      >
+        <h2 className="font-serif font-bold text-xl sm:text-2xl text-[#292321] text-center pt-1 pb-0.5">
+          Mural de anúncios
+        </h2>
 
-              <div className="absolute inset-0 p-5 sm:p-7 flex flex-col justify-end text-white">
-                <span className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] font-semibold text-[#EBD6D5]">
-                  {currentUser?.completedLessonIds?.length ? "CONTINUAR TREINO" : "PRÁTICA EM DESTAQUE"}
-                </span>
-
-                <h2 className="font-serif text-2xl sm:text-3xl lg:text-4xl font-medium text-white mt-1 leading-snug line-clamp-2">
-                  {currentLesson.title}
-                </h2>
-
-                <div className="mt-3.5 flex items-center justify-between">
-                  <div className="flex items-center gap-3.5 text-xs text-white/90 font-medium">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-[#EBD6D5]" />
-                      {currentLesson.durationMinutes} min
-                    </span>
-                    <span className="flex items-center gap-1.5 capitalize">
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#EBD6D5]" />
-                      {currentLesson.level}
-                    </span>
-                  </div>
-
-                  <Link
-                    href={`/aluna/aula/${currentLesson.id}`}
-                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/20 hover:bg-[#B77D82] border border-white/70 backdrop-blur-md text-white flex items-center justify-center transition-all duration-300 shadow-md group-hover:scale-105 group-hover:bg-[#B77D82] group-hover:border-[#B77D82] cursor-pointer"
-                    aria-label={`Iniciar aula ${currentLesson.title}`}
-                  >
-                    <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-white ml-0.5" />
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </article>
-        </section>
-      ) : (
-        <section className="p-8 sm:p-10 rounded-[28px] bg-white border border-[#EADBCE] text-center space-y-2.5 shadow-2xs">
-          <div className="w-12 h-12 rounded-full bg-[#FAF7F2] text-[#B77D82] mx-auto flex items-center justify-center">
-            <Sparkles className="w-6 h-6" />
+        {/* Banner 1: Aulas novas todos os meses */}
+        <div className="rounded-2xl sm:rounded-[22px] bg-gradient-to-r from-[#FDEEEF] via-[#FCE8EB] to-[#FCE2E6] border border-[#F6DCE0] p-4 sm:p-5 flex items-center gap-3.5 sm:gap-4 transition-transform duration-300 hover:scale-[1.01]">
+          <BellAnnouncementIcon />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm text-[#292321] font-normal leading-snug mb-0.5">
+              Atualizações com
+            </p>
+            <p className="font-serif font-bold text-xl sm:text-2xl text-[#9C5D64] leading-[1.15]">
+              aulas novas
+              <br />
+              todos os meses.
+            </p>
           </div>
-          <h2 className="font-serif font-bold text-lg text-[#292321]">
-            Seu espaço de práticas está pronto
-          </h2>
-          <p className="text-xs text-[#827B77] max-w-sm mx-auto leading-relaxed">
-            As aulas disponíveis no catálogo serão exibidas aqui para você iniciar seu momento de movimento.
-          </p>
-        </section>
-      )}
-
-      {/* 3. Bloco: Recomendado para Hoje */}
-      {recommendedLesson && (
-        <section aria-label="Recomendado para hoje" className="space-y-2.5">
-          <article className="p-4 rounded-3xl bg-white border border-[#EADBCE] shadow-2xs hover:border-[#B77D82]/50 transition flex items-center gap-4 group">
-            <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-[#F3EAE3] shrink-0">
-              {recommendedLesson.thumbnailUrl ? (
-                <img
-                  src={recommendedLesson.thumbnailUrl}
-                  alt={recommendedLesson.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-[#B77D82]">
-                  <Play className="w-6 h-6 opacity-40" />
-                </div>
-              )}
-            </div>
-
-            <div className="min-w-0 flex-1 space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#B77D82] block">
-                RECOMENDADO PARA HOJE
-              </span>
-              <h3 className="font-serif font-bold text-base sm:text-lg text-[#292321] line-clamp-1 group-hover:text-[#B77D82] transition-colors leading-snug">
-                {recommendedLesson.title}
-              </h3>
-              {recommendedLesson.description && (
-                <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
-                  {recommendedLesson.description}
-                </p>
-              )}
-              <div className="flex items-center gap-3 text-xs text-[#827B77] pt-0.5">
-                <span className="flex items-center gap-1 font-medium">
-                  <Clock className="w-3.5 h-3.5 text-[#B77D82]" />
-                  {recommendedLesson.durationMinutes} min
-                </span>
-                <span className="capitalize">{recommendedLesson.level}</span>
-              </div>
-            </div>
-
-            <Link
-              href={`/aluna/aula/${recommendedLesson.id}`}
-              className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition cursor-pointer"
-              aria-label={`Praticar aula ${recommendedLesson.title}`}
-            >
-              <Play className="w-4 h-4 fill-white ml-0.5" />
-            </Link>
-          </article>
-        </section>
-      )}
-
-      {/* 4. Seção: Explore por Categoria */}
-      <section aria-labelledby="categories-heading" className="space-y-3.5 pt-1">
-        <div className="flex items-center justify-between">
-          <h2 id="categories-heading" className="font-serif font-bold text-xl sm:text-2xl text-[#292321]">
-            Explore por categoria
-          </h2>
-          <Link
-            href="/aluna/programas"
-            className="text-xs font-semibold text-[#B77D82] hover:text-[#A3676C] flex items-center gap-1 transition"
-          >
-            <span>Ver todas</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
         </div>
 
-        {/* Linha de categorias */}
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none sm:grid sm:grid-cols-4 sm:gap-4">
-          {visibleCategories.slice(0, 4).map((category) => {
-            const isCatUpdating = getCategoryStatus(category) === "updating";
-
-            return (
-              <Link
-                key={category.id}
-                href={`/aluna/programas?categoria=${category.slug}`}
-                className="w-28 sm:w-auto shrink-0 group flex flex-col items-center sm:items-start text-center sm:text-left cursor-pointer"
-              >
-                <div
-                  className={`aspect-square w-full rounded-2xl overflow-hidden bg-[#F3EAE3] border border-[#EADBCE] shadow-2xs group-hover:border-[#B77D82]/60 group-hover:shadow-xs transition relative ${
-                    isCatUpdating ? "filter grayscale contrast-90 opacity-75" : ""
-                  }`}
-                >
-                  {category.bannerUrl ? (
-                    <img
-                      src={category.bannerUrl}
-                      alt={category.name}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[#B77D82]">
-                      <Compass className="w-8 h-8 opacity-50" />
-                    </div>
-                  )}
-                  {isCatUpdating && (
-                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center p-1">
-                      <span className="text-[9px] font-bold text-white bg-amber-700/80 px-2 py-0.5 rounded-full backdrop-blur-xs flex items-center gap-1">
-                        <Clock3 className="w-2.5 h-2.5" /> Em atualização
-                      </span>
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/5 group-hover:bg-transparent transition" />
-                </div>
-                <span className="font-medium text-xs text-[#292321] mt-2 group-hover:text-[#B77D82] transition line-clamp-2">
-                  {category.name}
-                </span>
-              </Link>
-            );
-          })}
+        {/* Banner 2: Nosso primeiro desafio */}
+        <div className="rounded-2xl sm:rounded-[22px] bg-gradient-to-r from-[#FDEEEF] via-[#FCE8EB] to-[#FCE2E6] border border-[#F6DCE0] p-4 sm:p-5 flex items-center gap-3.5 sm:gap-4 transition-transform duration-300 hover:scale-[1.01]">
+          <CalendarAnnouncementIcon />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm text-[#292321] font-normal leading-snug mb-0.5">
+              Em breve,
+            </p>
+            <p className="font-serif font-bold text-xl sm:text-2xl text-[#9C5D64] leading-[1.15]">
+              nosso primeiro
+              <br />
+              desafio.
+            </p>
+          </div>
         </div>
+      </section>
+
+      {/* 3. Botão destacado de acesso a todas as aulas */}
+      <section aria-label="Acesso às aulas" className="pt-1">
+        <Link
+          href="/aluna/programas"
+          className="w-full py-4 sm:py-4.5 px-6 rounded-2xl bg-[#B77D82] hover:bg-[#A3676C] active:scale-[0.99] text-white font-serif font-medium text-base sm:text-lg flex items-center justify-center gap-2.5 shadow-sm hover:shadow transition-all duration-200 group"
+          id="btn-access-all-lessons"
+        >
+          <span>Acesse todas as aulas</span>
+          <ArrowRight className="w-5 h-5 transition-transform duration-200 group-hover:translate-x-1" />
+        </Link>
       </section>
     </div>
   );

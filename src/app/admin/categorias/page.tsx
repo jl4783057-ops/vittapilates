@@ -135,14 +135,26 @@ export default function AdminCategoriesPage() {
           body: JSON.stringify(updatedCat),
         });
 
+        const resData = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || "Erro ao atualizar categoria no Supabase.");
+          throw new Error(resData.error || "Erro ao atualizar categoria no Supabase.");
         }
 
-        updateCategory(editingCat.id, updatedCat);
+        const finalCat: Category = resData.category || updatedCat;
+        updateCategory(editingCat.id, finalCat);
         setEditingCat(null);
-        setToastMessage({ type: "success", text: `Categoria "${updatedCat.name}" e estado salvos com sucesso!` });
+
+        if (resData.needsMigration) {
+          setToastMessage({
+            type: "success",
+            text: `Categoria "${finalCat.name}" salva! Para ativar o estado "Em atualização", aplique a migração 005 no Supabase.`,
+          });
+        } else {
+          setToastMessage({
+            type: "success",
+            text: `Categoria "${finalCat.name}" salva com sucesso!`,
+          });
+        }
       }
 
       await loadCategories();
@@ -169,22 +181,30 @@ export default function AdminCategoriesPage() {
         body: JSON.stringify(updated),
       });
 
+      const resData = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "Erro ao atualizar estado da categoria no Supabase.");
+        throw new Error(resData.error || "Erro ao atualizar estado da categoria no Supabase.");
       }
 
-      updateCategory(cat.id, updated);
+      const finalCat: Category = resData.category || updated;
+      updateCategory(cat.id, finalCat);
       const statusLabels: Record<PublicationStatus, string> = {
         available: "Disponível para alunas",
         updating: "Em atualização (banner cinza e aviso)",
         hidden: "Oculta (removida da área da aluna)",
       };
 
-      setToastMessage({
-        type: "success",
-        text: `Categoria "${cat.name}" agora está: ${statusLabels[newStatus]}!`,
-      });
+      if (resData.needsMigration) {
+        setToastMessage({
+          type: "success",
+          text: `Estado alterado para "${statusLabels[newStatus]}". Aplique a migração 005 no Supabase para persistir 3 estados.`,
+        });
+      } else {
+        setToastMessage({
+          type: "success",
+          text: `Categoria "${cat.name}" agora está: ${statusLabels[newStatus]}!`,
+        });
+      }
       await loadCategories();
       setTimeout(() => setToastMessage(null), 3500);
     } catch (err) {

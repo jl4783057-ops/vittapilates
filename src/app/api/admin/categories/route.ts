@@ -3,18 +3,40 @@ import { isSupabaseAdminConfigured, getSupabaseAdmin } from "@/lib/supabase/admi
 import { isAdminRequest } from "@/lib/access";
 import { Category, PublicationStatus } from "@/types";
 import { INITIAL_CATEGORIES } from "@/lib/data/initial-data";
-import { getStatusOverride, setStatusOverride, deleteStatusOverride } from "@/lib/data/publication-status-store";
+
+function isMissingStatusColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as Record<string, unknown>;
+  const code = String(e.code || "");
+  const message = String(e.message || "");
+  return (
+    code === "PGRST204" ||
+    code === "42703" ||
+    message.includes("'status' column") ||
+    message.includes("column \"status\" does not exist") ||
+    message.includes("column categories.status does not exist")
+  );
+}
+
+function getErrorMessage(err: unknown): string {
+  if (!err) return "Erro desconhecido ao processar categoria.";
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object") {
+    const e = err as Record<string, unknown>;
+    if (typeof e.message === "string" && e.message) return e.message;
+    if (typeof e.details === "string" && e.details) return e.details;
+    if (typeof e.hint === "string" && e.hint) return e.hint;
+  }
+  return String(err);
+}
 
 export function mapDbToCategory(row: Record<string, unknown>): Category {
   const rowId = String(row.id);
   const rawStatus = typeof row.status === "string" ? row.status.trim().toLowerCase() : "";
-  const override = getStatusOverride("categories", rowId);
 
   let status: PublicationStatus = "available";
   if (rawStatus === "available" || rawStatus === "updating" || rawStatus === "hidden") {
     status = rawStatus as PublicationStatus;
-  } else if (override) {
-    status = override;
   } else if (row.published === false) {
     status = "hidden";
   } else {
@@ -47,7 +69,7 @@ export function mapCategoryToDb(cat: Category): Record<string, unknown> {
   };
 }
 
-// GET: Retorna todas as categorias compartilhadas do Supabase
+// GET: Retorna todas as categorias do Supabase
 export async function GET() {
   if (!isSupabaseAdminConfigured) {
     return NextResponse.json({ configured: false, categories: INITIAL_CATEGORIES }, { headers: { "Cache-Control": "no-store" } });
@@ -59,13 +81,22 @@ export async function GET() {
       .select("*")
       .order("display_order", { ascending: true });
 
-    if (error || !data || data.length === 0) {
+    if (error) {
+      console.error("[API categories GET] Erro ao listar categorias:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+      });
+      return NextResponse.json({ configured: true, categories: INITIAL_CATEGORIES }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (!data || data.length === 0) {
       return NextResponse.json({ configured: true, categories: INITIAL_CATEGORIES }, { headers: { "Cache-Control": "no-store" } });
     }
 
     return NextResponse.json({ configured: true, categories: data.map(mapDbToCategory) }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
-    console.error("Erro ao listar categorias:", err);
+    console.error("[API categories GET] Exceção inesperada:", err);
     return NextResponse.json({ configured: false, categories: INITIAL_CATEGORIES }, { headers: { "Cache-Control": "no-store" } });
   }
 }
@@ -86,42 +117,52 @@ export async function POST(request: NextRequest) {
       .select("*")
       .single();
 
-    // Se o banco ainda não rodou a migration da coluna status (código 42703)
-    if (insertRes.error && insertRes.error.code === "42703") {
+    let missingStatusCol = false;
+    if (insertRes.error && isMissingStatusColumnError(insertRes.error)) {
+      missingStatusCol = true;
+      console.warn(
+        "[API categories POST] Coluna 'status' ausente no schema Supabase (PGRST204/42703). Para suporte completo aos 3 estados, aplique a migração 005_category_subcategory_publication_status.sql. Salvando com 'published'."
+      );
       const { status: _omitted, ...fallbackPayload } = dbPayload;
-      setStatusOverride("categories", String(body.id), status);
       insertRes = await getSupabaseAdmin()
         .from("categories")
         .insert(fallbackPayload)
         .select("*")
         .single();
-    } else if (!insertRes.error) {
-      setStatusOverride("categories", String(body.id), status);
     }
 
-    if (insertRes.error) throw insertRes.error;
-    return NextResponse.json({ success: true, category: mapDbToCategory(insertRes.data) });
+    if (insertRes.error) {
+      console.error("[API categories POST] Erro de banco:", {
+        code: insertRes.error.code,
+        message: insertRes.error.message,
+        details: insertRes.error.details,
+      });
+      return NextResponse.json({ error: getErrorMessage(insertRes.error) }, { status: 500 });
+    }
+
+    const savedCategory = mapDbToCategory(insertRes.data);
+    return NextResponse.json({
+      success: true,
+      category: savedCategory,
+      needsMigration: missingStatusCol && status === "updating",
+    });
   } catch (err: unknown) {
-    console.error("Erro ao criar categoria:", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro ao salvar categoria no banco." },
-      { status: 500 }
-    );
+    console.error("[API categories POST] Exceção:", err);
+    return NextResponse.json({ error: getErrorMessage(err) }, { status: 500 });
   }
 }
 
-// PUT: Atualiza ou cria em lote uma categoria (admin apenas)
+// PUT: Atualiza uma categoria ou lote de categorias no Supabase (admin apenas)
 export async function PUT(request: NextRequest) {
   if (!isAdminRequest(request)) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   if (!isSupabaseAdminConfigured) return NextResponse.json({ error: "Supabase não configurado." }, { status: 503 });
 
   try {
     const body = await request.json();
+
     if (Array.isArray(body)) {
-      // Inserção/atualização em lote (ex: sync inicial de fábrica)
       const rows = body.map((cat: Category) => {
         const s = cat.status || (cat.published === false ? "hidden" : "available");
-        setStatusOverride("categories", String(cat.id), s);
         return mapCategoryToDb({ ...cat, status: s });
       });
 
@@ -130,7 +171,12 @@ export async function PUT(request: NextRequest) {
         .upsert(rows)
         .select("*");
 
-      if (upsertRes.error && upsertRes.error.code === "42703") {
+      let missingStatusCol = false;
+      if (upsertRes.error && isMissingStatusColumnError(upsertRes.error)) {
+        missingStatusCol = true;
+        console.warn(
+          "[API categories PUT batch] Coluna 'status' ausente no schema Supabase. Executando fallback seguro com 'published'."
+        );
         const fallbackRows = rows.map((r) => {
           const { status: _omitted, ...rest } = r;
           return rest;
@@ -141,8 +187,20 @@ export async function PUT(request: NextRequest) {
           .select("*");
       }
 
-      if (upsertRes.error) throw upsertRes.error;
-      return NextResponse.json({ success: true, categories: (upsertRes.data || []).map(mapDbToCategory) });
+      if (upsertRes.error) {
+        console.error("[API categories PUT batch] Erro de banco:", {
+          code: upsertRes.error.code,
+          message: upsertRes.error.message,
+          details: upsertRes.error.details,
+        });
+        return NextResponse.json({ error: getErrorMessage(upsertRes.error) }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        categories: (upsertRes.data || []).map(mapDbToCategory),
+        needsMigration: missingStatusCol,
+      });
     }
 
     const cat: Category = body;
@@ -155,26 +213,38 @@ export async function PUT(request: NextRequest) {
       .select("*")
       .single();
 
-    if (upsertRes.error && upsertRes.error.code === "42703") {
+    let missingStatusCol = false;
+    if (upsertRes.error && isMissingStatusColumnError(upsertRes.error)) {
+      missingStatusCol = true;
+      console.warn(
+        `[API categories PUT] Coluna 'status' ausente no schema Supabase ao salvar categoria "${cat.name}". Executando fallback persistente com 'published'.`
+      );
       const { status: _omitted, ...fallbackPayload } = dbPayload;
-      setStatusOverride("categories", String(cat.id), status);
       upsertRes = await getSupabaseAdmin()
         .from("categories")
         .upsert(fallbackPayload)
         .select("*")
         .single();
-    } else if (!upsertRes.error) {
-      setStatusOverride("categories", String(cat.id), status);
     }
 
-    if (upsertRes.error) throw upsertRes.error;
-    return NextResponse.json({ success: true, category: mapDbToCategory(upsertRes.data) });
+    if (upsertRes.error) {
+      console.error("[API categories PUT] Erro de banco:", {
+        code: upsertRes.error.code,
+        message: upsertRes.error.message,
+        details: upsertRes.error.details,
+      });
+      return NextResponse.json({ error: getErrorMessage(upsertRes.error) }, { status: 500 });
+    }
+
+    const savedCategory = mapDbToCategory(upsertRes.data);
+    return NextResponse.json({
+      success: true,
+      category: savedCategory,
+      needsMigration: missingStatusCol && status === "updating",
+    });
   } catch (err: unknown) {
-    console.error("Erro ao atualizar categoria:", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro ao atualizar categoria no banco." },
-      { status: 500 }
-    );
+    console.error("[API categories PUT] Exceção:", err);
+    return NextResponse.json({ error: getErrorMessage(err) }, { status: 500 });
   }
 }
 
@@ -188,15 +258,18 @@ export async function DELETE(request: NextRequest) {
   if (!id) return NextResponse.json({ error: "ID da categoria obrigatório." }, { status: 400 });
 
   try {
-    deleteStatusOverride("categories", id);
     const { error } = await getSupabaseAdmin().from("categories").delete().eq("id", id);
-    if (error) throw error;
+    if (error) {
+      console.error("[API categories DELETE] Erro ao deletar categoria:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+      });
+      return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
+    }
     return NextResponse.json({ success: true, id });
   } catch (err: unknown) {
-    console.error("Erro ao deletar categoria:", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro ao excluir categoria no banco." },
-      { status: 500 }
-    );
+    console.error("[API categories DELETE] Exceção:", err);
+    return NextResponse.json({ error: getErrorMessage(err) }, { status: 500 });
   }
 }

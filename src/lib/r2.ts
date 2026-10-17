@@ -38,6 +38,7 @@ function getR2Client(): S3Client {
         accessKeyId,
         secretAccessKey,
       },
+      forcePathStyle: true,
     });
   }
   return r2Client;

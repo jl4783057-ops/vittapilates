@@ -467,11 +467,26 @@ function AdminExercisesContent() {
 
           const start = (partNumber - 1) * activeUpload.partSize;
           const end = Math.min(start + activeUpload.partSize, file.size);
-          const putResponse = await fetch(signed.url, { method: "PUT", body: file.slice(start, end) });
 
-          const etag = putResponse.headers.get("ETag");
-          if (!putResponse.ok || !etag) {
-            throw new Error("O R2 recusou uma parte do vídeo. Confira a configuração do bucket.");
+          let putResponse: Response;
+          try {
+            putResponse = await fetch(signed.url, { method: "PUT", body: file.slice(start, end) });
+          } catch (fetchErr) {
+            const cleanOrigin = (() => {
+              try { return new URL(signed.url).origin; } catch { return "R2"; }
+            })();
+            console.error(`[Upload R2] Falha de conexão/CSP para ${cleanOrigin}:`, fetchErr);
+            throw new Error(`Falha de rede ao conectar ao R2 (${cleanOrigin}). Verifique se a origem está liberada no CSP/CORS.`);
+          }
+
+          const etag = putResponse.headers.get("ETag") || putResponse.headers.get("etag");
+          if (!putResponse.ok) {
+            console.error(`[Upload R2] Erro HTTP ${putResponse.status} do R2 ao enviar parte ${partNumber}.`);
+            throw new Error(`O Cloudflare R2 retornou status ${putResponse.status}. Confira as permissões do bucket.`);
+          }
+          if (!etag) {
+            console.error("[Upload R2] Header ETag ausente na resposta do R2 (ExposeHeaders no CORS).");
+            throw new Error("O R2 aceitou o envio da parte, mas o cabeçalho 'ETag' não foi exposto pelo navegador. Adicione 'ETag' em ExposeHeaders nas regras de CORS do bucket R2.");
           }
 
           parts.push({ ETag: etag, PartNumber: partNumber });

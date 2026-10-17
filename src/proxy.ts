@@ -6,12 +6,30 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isDevelopment = process.env.NODE_ENV === "development";
 
-  // Obter domínio público configurado para o Cloudflare R2 (se houver)
+  // Obter configurações do Cloudflare R2 para liberação no Content Security Policy (CSP)
   const r2PublicDomain = (process.env.CLOUDFLARE_R2_PUBLIC_DOMAIN || process.env.R2_PUBLIC_DOMAIN || "").trim().replace(/\/$/, "");
   const configuredR2AccountId = (process.env.CLOUDFLARE_R2_ACCOUNT_ID || process.env.R2_ACCOUNT_ID || "").trim();
-  const r2UploadOrigin = /^[a-f0-9]{32}$/i.test(configuredR2AccountId)
-    ? `https://${configuredR2AccountId}.r2.cloudflarestorage.com`
-    : null;
+  const configuredR2Bucket = (process.env.CLOUDFLARE_R2_BUCKET_NAME || process.env.R2_BUCKET_NAME || "").trim();
+
+  // Origens do R2 para upload multipart e reprodução (cobre path-style, virtual-hosted e wildcard)
+  const r2Origins: string[] = [];
+  if (/^[a-f0-9]{32}$/i.test(configuredR2AccountId)) {
+    // Formato path-style: https://<account_id>.r2.cloudflarestorage.com
+    r2Origins.push(`https://${configuredR2AccountId}.r2.cloudflarestorage.com`);
+    // Formato virtual-hosted wildcard: https://*.<account_id>.r2.cloudflarestorage.com
+    r2Origins.push(`https://*.${configuredR2AccountId}.r2.cloudflarestorage.com`);
+    // Bucket específico configurado
+    if (configuredR2Bucket) {
+      r2Origins.push(`https://${configuredR2Bucket}.${configuredR2AccountId}.r2.cloudflarestorage.com`);
+    }
+  }
+  // Domínio genérico de armazenamento do Cloudflare R2
+  r2Origins.push("https://*.r2.cloudflarestorage.com");
+  if (r2PublicDomain) {
+    r2Origins.push(r2PublicDomain);
+  }
+
+  const uniqueR2Origins = Array.from(new Set(r2Origins)).join(" ");
 
   // Lista de fontes permitidas estritamente para imagens e vídeos do projeto
   const allowedImageSources = [
@@ -22,7 +40,7 @@ export async function proxy(request: NextRequest) {
     "https://*.supabase.co",
     "https://*.public.blob.vercel-storage.com",
     "https://*.blob.vercel-storage.com",
-    ...(r2PublicDomain ? [r2PublicDomain] : []),
+    uniqueR2Origins,
   ].join(" ");
 
   const allowedMediaSources = [
@@ -30,7 +48,14 @@ export async function proxy(request: NextRequest) {
     "blob:",
     "https://commondatastorage.googleapis.com",
     "https://*.supabase.co",
-    ...(r2PublicDomain ? [r2PublicDomain] : []),
+    uniqueR2Origins,
+  ].join(" ");
+
+  const allowedConnectSources = [
+    "'self'",
+    "https://*.supabase.co",
+    "wss://*.supabase.co",
+    uniqueR2Origins,
   ].join(" ");
 
   // A nonce lets the browser execute scripts Next.js emitted for this request.
@@ -43,7 +68,7 @@ export async function proxy(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     `img-src ${allowedImageSources}`,
     "font-src 'self' data:",
-    `connect-src 'self' https://*.supabase.co wss://*.supabase.co${r2UploadOrigin ? ` ${r2UploadOrigin}` : ""}`,
+    `connect-src ${allowedConnectSources}`,
     `media-src ${allowedMediaSources}`,
     "frame-src 'self'",
     "object-src 'none'",

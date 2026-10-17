@@ -90,18 +90,50 @@ export async function ensureAccountAndSendPasswordLink(opts: {
     });
 
     if (error) {
-      // Se por corrida o usuário já existia no Auth
-      if (error.message.toLowerCase().includes("already registered") || error.message.toLowerCase().includes("exists")) {
-        const { data: listData } = await admin.auth.admin.listUsers({ page: 1, perPage: 100 });
-        const match = listData?.users?.find((u) => u.email && normalizeEmail(u.email) === email);
-        if (match) {
-          authUserId = match.id;
-        } else {
-          throw new Error(`Falha ao registrar conta no Auth: ${error.message}`);
-        }
+      // Se o usuário já existia ou se o envio do e-mail falhou por limite de SMTP
+      const { data: listData } = await admin.auth.admin.listUsers({ page: 1, perPage: 100 });
+      const match = listData?.users?.find((u) => u.email && normalizeEmail(u.email) === email);
+
+      if (match) {
+        authUserId = match.id;
       } else {
-        throw new Error(`Falha ao enviar convite: ${error.message}`);
+        // Fallback resiliente: cria o usuário diretamente no Auth sem travar por limite de SMTP
+        console.warn(`[access] inviteUserByEmail não entregou e-mail (${error.message}). Criando usuário diretamente no Auth...`);
+        const { data: createData, error: createError } = await admin.auth.admin.createUser({
+          email,
+          user_metadata: { name: opts.name },
+          email_confirm: true,
+        });
+
+        if (createError && !createError.message.toLowerCase().includes("exists")) {
+          throw new Error(`Falha ao registrar conta no Auth: ${createError.message}`);
+        }
+        if (createData?.user) {
+          authUserId = createData.user.id;
+        }
       }
+
+      if (authUserId) {
+        await admin.from("profiles").upsert({
+          id: authUserId,
+          email,
+          name: opts.name || email.split("@")[0],
+          subscription_status: "inactive",
+          access_type: "none",
+        });
+
+        try {
+          await getSupabaseAnonServer().auth.resetPasswordForEmail(email, {
+            redirectTo: opts.redirectTo,
+          });
+        } catch (mailErr) {
+          console.warn("[access] Aviso não impeditivo: falha no envio do e-mail de definição de senha:", mailErr);
+        }
+
+        return { userId: authUserId, created: true, emailSent: false };
+      }
+
+      throw new Error(`Falha ao criar conta de autenticação: ${error.message}`);
     } else if (data?.user) {
       authUserId = data.user.id;
       // Garante perfil
@@ -126,7 +158,10 @@ export async function ensureAccountAndSendPasswordLink(opts: {
       const { error } = await getSupabaseAnonServer().auth.resetPasswordForEmail(email, {
         redirectTo: opts.redirectTo,
       });
-      if (error) throw new Error(`Falha ao enviar link de senha: ${error.message}`);
+      if (error) {
+        console.warn(`[access] Aviso não impeditivo ao enviar link de senha para ${email}: ${error.message}`);
+        return { userId: authUserId, created: false, emailSent: false };
+      }
       return { userId: authUserId, created: false, emailSent: true };
     }
 

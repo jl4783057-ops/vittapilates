@@ -2,22 +2,22 @@
 
 import React, { useState } from "react";
 import { useApp } from "@/lib/store/context";
-import { Subcategory } from "@/types";
+import { Subcategory, PublicationStatus } from "@/types";
 import { ImageUploadField } from "@/components/ui/ImageUploadField";
 import {
-  ListTree,
+  PublicationStatusSelector,
+  PublicationStatusSegmented,
+  PublicationStatusBadge,
+} from "@/components/admin/PublicationStatusSelector";
+import {
   Plus,
   Edit2,
   Trash2,
-  Eye,
-  EyeOff,
   X,
   ImageIcon,
   AlertCircle,
   RefreshCw,
-  Upload,
   CheckCircle2,
-  Check,
 } from "lucide-react";
 
 // Error Boundary para evitar tela branca em qualquer falha de renderização
@@ -85,7 +85,7 @@ function AdminSubcategoriesContent() {
     description: "",
     imageUrl: "",
     order: 1,
-    published: true,
+    status: "available" as PublicationStatus,
   });
 
   // Carregar categorias oficiais completas do Supabase
@@ -144,7 +144,7 @@ function AdminSubcategoriesContent() {
       description: "",
       imageUrl: "",
       order: (subcategories?.length || 0) + 1,
-      published: true,
+      status: "available",
     });
     setIsCreating(true);
   };
@@ -155,6 +155,13 @@ function AdminSubcategoriesContent() {
     setNewImagePreview("");
     setEditingSub(sub);
 
+    const resolvedStatus: PublicationStatus =
+      sub.status === "available" || sub.status === "updating" || sub.status === "hidden"
+        ? sub.status
+        : sub.published === false
+        ? "hidden"
+        : "available";
+
     // Tratamento estritamente defensivo para dados opcionais ou nulos
     setFormData({
       name: typeof sub.name === "string" ? sub.name : "",
@@ -163,7 +170,7 @@ function AdminSubcategoriesContent() {
       description: typeof sub.description === "string" ? sub.description : "",
       imageUrl: typeof sub.imageUrl === "string" && sub.imageUrl !== "null" && sub.imageUrl !== "undefined" ? sub.imageUrl : "",
       order: typeof sub.order === "number" && Number.isFinite(sub.order) ? sub.order : 1,
-      published: typeof sub.published === "boolean" ? sub.published : true,
+      status: resolvedStatus,
     });
   };
 
@@ -178,13 +185,11 @@ function AdminSubcategoriesContent() {
     setModalError(null);
     setToastMessage(null);
 
-    setIsSaving(true);
-    setModalError(null);
-    setToastMessage(null);
-
     const slug = formData.slug.trim() || formData.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
     // A nova imagem só substitui a imagem atual após clicar em Salvar
     const finalImageUrl = newImagePreview ? newImagePreview : formData.imageUrl;
+    const status = formData.status;
+    const published = status !== "hidden";
 
     try {
       if (isCreating) {
@@ -196,7 +201,8 @@ function AdminSubcategoriesContent() {
           description: formData.description.trim() || undefined,
           imageUrl: finalImageUrl || undefined,
           order: Number(formData.order) || 1,
-          published: formData.published,
+          published,
+          status,
         };
 
         const res = await fetch("/api/admin/subcategories", {
@@ -222,7 +228,8 @@ function AdminSubcategoriesContent() {
           description: formData.description.trim() || undefined,
           imageUrl: finalImageUrl || undefined,
           order: Number(formData.order) || 1,
-          published: formData.published,
+          published,
+          status,
         };
 
         const res = await fetch("/api/admin/subcategories", {
@@ -272,24 +279,48 @@ function AdminSubcategoriesContent() {
     }
   };
 
-  const togglePublish = async (sub: Subcategory) => {
+  const handleQuickStatusChange = async (sub: Subcategory, newStatus: PublicationStatus) => {
+    const updated: Subcategory = {
+      ...sub,
+      status: newStatus,
+      published: newStatus !== "hidden",
+    };
+
     try {
-      const updated = { ...sub, published: !sub.published };
       const res = await fetch("/api/admin/subcategories", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
-      if (res.ok) {
-        await loadSubcategories();
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Erro ao atualizar status no banco.");
       }
+
+      const statusLabels: Record<PublicationStatus, string> = {
+        available: "Disponível para alunas",
+        updating: "Em atualização (banner cinza e aviso)",
+        hidden: "Oculta (removida da área da aluna)",
+      };
+
+      setToastMessage({
+        type: "success",
+        text: `Subcategoria "${sub.name}" agora está: ${statusLabels[newStatus]}!`,
+      });
+      await loadSubcategories();
+      setTimeout(() => setToastMessage(null), 3500);
     } catch (err) {
-      console.warn("Aviso ao alternar publicação da subcategoria:", err);
+      setToastMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Erro ao alterar estado.",
+      });
     }
   };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in">
+      {/* Toast Feedback */}
       {toastMessage && (
         <div
           className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center justify-between shadow-xs ${
@@ -299,20 +330,23 @@ function AdminSubcategoriesContent() {
           }`}
         >
           <span>{toastMessage.text}</span>
-          <button onClick={() => setToastMessage(null)} className="text-[#827B77] hover:text-[#292321]">
+          <button onClick={() => setToastMessage(null)} className="text-[#827B77] hover:text-[#292321] cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
+
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#EADBCE]">
         <div>
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321]">
-            Gestão de Subcategorias
+            Subcategorias / Temas
           </h1>
           <p className="text-xs sm:text-sm text-[#827B77] mt-1">
-            Mapeamento dos focos específicos dentro de cada categoria principal com upload de imagem.
+            Controle de publicação em 3 estados (Disponível, Em atualização e Oculta) com persistência no Supabase.
           </p>
         </div>
+
         <button
           onClick={handleOpenCreate}
           className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold shadow-xs transition cursor-pointer"
@@ -322,17 +356,14 @@ function AdminSubcategoriesContent() {
         </button>
       </div>
 
-      {/* Filtro por Categoria Mãe */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs scrollbar-none">
-        <span className="text-[#827B77] font-semibold text-[11px] uppercase tracking-wider shrink-0 mr-1">
-          Filtrar por Categoria:
-        </span>
+      {/* Filtro por Categoria */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
         <button
           onClick={() => setFilterCat("todas")}
-          className={`shrink-0 px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer ${
+          className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
             filterCat === "todas"
-              ? "bg-[#B77D82] text-white"
-              : "bg-[#FFFFFF] text-[#827B77] border border-[#EADBCE]"
+              ? "bg-[#B77D82] text-white shadow-xs"
+              : "bg-[#FFFFFF] text-[#827B77] border border-[#EADBCE] hover:bg-[#FAF7F2]"
           }`}
         >
           Todas ({(subcategories || []).length})
@@ -341,13 +372,13 @@ function AdminSubcategoriesContent() {
           <button
             key={c.id}
             onClick={() => setFilterCat(c.id)}
-            className={`shrink-0 px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
               filterCat === c.id
-                ? "bg-[#B77D82] text-white"
-                : "bg-[#FFFFFF] text-[#827B77] border border-[#EADBCE] hover:text-[#292321]"
+                ? "bg-[#B77D82] text-white shadow-xs"
+                : "bg-[#FFFFFF] text-[#827B77] border border-[#EADBCE] hover:bg-[#FAF7F2]"
             }`}
           >
-            {c.name}
+            {c.name} ({(subcategories || []).filter((s) => s.categoryId === c.id).length})
           </button>
         ))}
       </div>
@@ -355,44 +386,54 @@ function AdminSubcategoriesContent() {
       {/* Tabela de Subcategorias */}
       <div className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] overflow-hidden shadow-2xs">
         {filtered.length === 0 ? (
-          <div className="p-10 text-center space-y-2">
-            <div className="w-10 h-10 rounded-full bg-[#FAF7F2] text-[#B77D82] mx-auto flex items-center justify-center">
-              <ListTree className="w-5 h-5" />
-            </div>
-            <p className="text-sm font-semibold text-[#292321]">
-              {filterCat === "cat-comunidade"
-                ? "Nenhuma subcategoria cadastrada para a categoria Comunidade."
-                : "Nenhuma subcategoria encontrada para esta categoria."}
-            </p>
-            <p className="text-xs text-[#827B77]">
-              {filterCat === "cat-comunidade"
-                ? "A categoria Comunidade não possui divisões específicas por padrão."
-                : "Você pode cadastrar uma nova subcategoria usando o botão acima."}
-            </p>
+          <div className="p-8 text-center text-xs text-[#827B77]">
+            Nenhuma subcategoria encontrada para esta categoria.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#FAF7F2] text-[#827B77] uppercase text-[10px] tracking-wider border-b border-[#EADBCE]">
+              <thead className="bg-[#FAF7F2] border-b border-[#EADBCE] text-[10px] font-bold uppercase tracking-wider text-[#827B77]">
                 <tr>
                   <th className="p-4">Subcategoria</th>
                   <th className="p-4">Categoria Mãe</th>
                   <th className="p-4">Slug</th>
                   <th className="p-4">Ordem</th>
-                  <th className="p-4">Status</th>
+                  <th className="p-4">Estado de Publicação</th>
                   <th className="p-4 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#FAF7F2]">
+              <tbody className="divide-y divide-[#EADBCE]">
                 {filtered.map((sub) => {
                   const parentCat = (categories || []).find((c) => c?.id === sub?.categoryId);
+                  const parentStatus: PublicationStatus =
+                    parentCat?.status === "available" || parentCat?.status === "updating" || parentCat?.status === "hidden"
+                      ? parentCat.status
+                      : parentCat?.published === false
+                      ? "hidden"
+                      : "available";
+
+                  const currentStatus: PublicationStatus =
+                    sub.status === "available" || sub.status === "updating" || sub.status === "hidden"
+                      ? sub.status
+                      : sub.published === false
+                      ? "hidden"
+                      : "available";
+
                   return (
                     <tr key={sub.id} className="hover:bg-[#FAF7F2]/50 transition">
                       <td className="p-4 font-semibold text-[#292321]">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#F3EAE3] border border-[#EADBCE] shrink-0 flex items-center justify-center">
                             {sub.imageUrl ? (
-                              <img src={sub.imageUrl} alt={sub.name} className="w-full h-full object-cover" />
+                              <img
+                                src={sub.imageUrl}
+                                alt={sub.name}
+                                className={`w-full h-full object-cover ${
+                                  currentStatus === "updating" || parentStatus === "updating"
+                                    ? "grayscale contrast-90 opacity-75"
+                                    : ""
+                                }`}
+                              />
                             ) : (
                               <ImageIcon className="w-4 h-4 text-[#827B77]/60" />
                             )}
@@ -410,9 +451,14 @@ function AdminSubcategoriesContent() {
                           <span className="px-2.5 py-0.5 rounded-full bg-[#F7EEEE] text-[#B77D82] font-medium text-[11px]">
                             {parentCat?.name || "Sem categoria"}
                           </span>
-                          {parentCat && !parentCat.published && (
-                            <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 text-[10px] font-semibold border border-amber-200">
-                              Cat. pai indisponível
+                          {parentStatus === "updating" && (
+                            <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-[10px] font-semibold border border-amber-200">
+                              Cat. pai em atualização
+                            </span>
+                          )}
+                          {parentStatus === "hidden" && (
+                            <span className="px-2 py-0.5 rounded-md bg-stone-100 text-stone-700 text-[10px] font-semibold border border-stone-200">
+                              Cat. pai oculta
                             </span>
                           )}
                         </div>
@@ -424,37 +470,13 @@ function AdminSubcategoriesContent() {
                         #{sub.order}
                       </td>
                       <td className="p-4">
-                        <button
-                          onClick={() => togglePublish(sub)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold transition cursor-pointer ${
-                            sub.published && parentCat?.published !== false
-                              ? "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
-                              : "bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100"
-                          }`}
-                          title={
-                            parentCat?.published === false
-                              ? "A categoria principal está desligada, portanto este tema permanece indisponível para as alunas"
-                              : sub.published
-                              ? "Clique para desativar este tema"
-                              : "Clique para ativar este tema"
-                          }
-                        >
-                          {sub.published && parentCat?.published !== false ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Disponível para alunas</span>
-                            </>
-                          ) : (
-                            <>
-                              <EyeOff className="w-3.5 h-3.5 text-amber-600" />
-                              <span>
-                                {parentCat?.published === false
-                                  ? "Oculta (Cat. pai desligada)"
-                                  : "Indisponível (Em atualização)"}
-                              </span>
-                            </>
-                          )}
-                        </button>
+                        <div className="space-y-1">
+                          <PublicationStatusSegmented
+                            currentStatus={currentStatus}
+                            onChange={(newStatus) => handleQuickStatusChange(sub, newStatus)}
+                            size="xs"
+                          />
+                        </div>
                       </td>
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
@@ -560,7 +582,6 @@ function AdminSubcategoriesContent() {
 
               {/* Seção de Capa com Isolamento de Prévia e Preservação da Atual */}
               <div className="space-y-2 pt-1 border-t border-[#FAF7F2]">
-                {/* 1. Imagem Atual (se existir) */}
                 {formData.imageUrl && !newImagePreview && (
                   <div className="p-3 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] space-y-2">
                     <div className="flex items-center justify-between text-xs">
@@ -577,7 +598,6 @@ function AdminSubcategoriesContent() {
                   </div>
                 )}
 
-                {/* 2. Prévia de Nova Capa Selecionada (Aguardando salvar) */}
                 {newImagePreview && (
                   <div className="p-3 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-2 animate-fade-in">
                     <div className="flex items-center justify-between text-xs">
@@ -601,7 +621,6 @@ function AdminSubcategoriesContent() {
                   </div>
                 )}
 
-                {/* 3. Seletor de Nova Imagem */}
                 <ImageUploadField
                   label={formData.imageUrl || newImagePreview ? "Alterar / Enviar Nova Imagem" : "Imagem / Capa da Subcategoria (Opcional)"}
                   helperText="Formatos aceitos: JPG, PNG, WebP ou GIF (máx. 5 MB). A seleção não altera o banco antes de salvar."
@@ -635,49 +654,27 @@ function AdminSubcategoriesContent() {
                 />
               </div>
 
-              {/* Controle Claro: Disponível para alunas */}
-              <div className="p-3.5 rounded-2xl border border-[#EADBCE] bg-[#FAF7F2] space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <label className="text-xs font-bold text-[#292321] block cursor-pointer">
-                      Disponível para alunas
-                    </label>
-                    <span className="text-[11px] text-[#827B77] block mt-0.5">
-                      {formData.published
-                        ? "Ativo: este tema e suas aulas ficam acessíveis na área de membros."
-                        : "Indisponível: o tema fica em atualização com mensagem amigável para as alunas."}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, published: !formData.published })}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      formData.published ? "bg-[#B77D82]" : "bg-[#D8C7B8]"
-                    }`}
-                    role="switch"
-                    aria-checked={formData.published}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                        formData.published ? "translate-x-5" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Alerta caso a categoria pai selecionada esteja desligada */}
+              {/* Seletor Explícito dos 3 Estados */}
+              <div className="p-3.5 rounded-2xl border border-[#EADBCE] bg-white">
                 {(() => {
                   const selectedParent = categories.find((c) => c.id === formData.categoryId);
-                  if (selectedParent && !selectedParent.published) {
-                    return (
-                      <div className="pt-2 border-t border-[#EADBCE]/80 text-[11px] text-amber-800 flex items-center gap-1.5 font-medium">
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        <span>Atenção: A categoria pai &ldquo;{selectedParent.name}&rdquo; está desligada no momento. Mesmo que este tema esteja ligado, ele permanecerá indisponível para alunas até a categoria ser ativada.</span>
-                      </div>
-                    );
+                  let parentNotice: string | undefined = undefined;
+                  if (selectedParent) {
+                    if (selectedParent.status === "hidden" || selectedParent.published === false) {
+                      parentNotice = `Atenção: A categoria pai "${selectedParent.name}" está Oculta. Este tema permanecerá invisível na área das alunas até que a categoria seja publicada.`;
+                    } else if (selectedParent.status === "updating") {
+                      parentNotice = `Atenção: A categoria pai "${selectedParent.name}" está Em atualização. Suas aulas permanecerão bloqueadas até que a categoria volte para Disponível.`;
+                    }
                   }
-                  return null;
+
+                  return (
+                    <PublicationStatusSelector
+                      value={formData.status}
+                      onChange={(newStatus) => setFormData({ ...formData, status: newStatus })}
+                      label="Estado de Publicação do Tema"
+                      parentNotice={parentNotice}
+                    />
+                  );
                 })()}
               </div>
 

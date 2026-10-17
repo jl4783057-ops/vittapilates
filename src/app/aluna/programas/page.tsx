@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useMemo, Suspense } from "react";
+import React, { useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useApp } from "@/lib/store/context";
+import { Category, Subcategory, PublicationStatus } from "@/types";
 import {
   Clock,
   Play,
@@ -11,9 +12,35 @@ import {
   ChevronLeft,
   ArrowRight,
   Compass,
-  Layers,
   Sparkles,
+  AlertCircle,
+  Clock3,
 } from "lucide-react";
+
+function getCategoryStatus(c?: Category | null): PublicationStatus {
+  if (!c) return "hidden";
+  if (c.status === "available" || c.status === "updating" || c.status === "hidden") {
+    return c.status;
+  }
+  return c.published === false ? "hidden" : "available";
+}
+
+function getSubcategoryStatus(s?: Subcategory | null, parent?: Category | null): PublicationStatus {
+  if (!s) return "hidden";
+  const parentStatus = getCategoryStatus(parent);
+  if (parentStatus === "hidden") return "hidden";
+
+  const rawStatus =
+    s.status === "available" || s.status === "updating" || s.status === "hidden"
+      ? s.status
+      : s.published === false
+      ? "hidden"
+      : "available";
+
+  if (rawStatus === "hidden") return "hidden";
+  if (parentStatus === "updating") return "updating";
+  return rawStatus;
+}
 
 function ProgramsContent() {
   const router = useRouter();
@@ -26,46 +53,74 @@ function ProgramsContent() {
   const selectedCategory = categoryParam || null;
   const selectedSubcategory = subcategoryParam || null;
 
-  const publishedCategories = useMemo(
-    () => categories.filter((c) => c.published).sort((a, b) => a.order - b.order),
+  // 1. Categorias visíveis no Explorar (Disponível ou Em atualização; Oculta é excluída)
+  const visibleCategories = useMemo(
+    () =>
+      categories
+        .filter((c) => getCategoryStatus(c) !== "hidden")
+        .sort((a, b) => a.order - b.order),
     [categories]
   );
 
+  // Categoria atualmente selecionada (bloqueada se for 'hidden')
   const currentCategoryData = useMemo(() => {
     if (!selectedCategory) return null;
-    return categories.find(
+    const found = categories.find(
       (c) => c.slug === selectedCategory || c.id === selectedCategory
     );
+    return found || null;
   }, [categories, selectedCategory]);
 
-  // Subcategorias vinculadas EXCLUSIVAMENTE à categoria selecionada
-  const linkedSubcategories = useMemo(() => {
-    if (!currentCategoryData) return [];
-    return subcategories
-      .filter((s) => s.categoryId === currentCategoryData.id && s.published)
-      .sort((a, b) => a.order - b.order);
-  }, [subcategories, currentCategoryData]);
+  const categoryStatus = getCategoryStatus(currentCategoryData);
 
-  // Dados da subcategoria selecionada (inclui busca de subcategoria mesmo se indisponível para renderizar mensagem correta)
+  // 2. Subcategorias vinculadas à categoria atual (exclui ocultas)
+  const linkedSubcategories = useMemo(() => {
+    if (!currentCategoryData || categoryStatus === "hidden") return [];
+    return subcategories
+      .filter((s) => s.categoryId === currentCategoryData.id)
+      .map((s) => ({
+        ...s,
+        effectiveStatus: getSubcategoryStatus(s, currentCategoryData),
+      }))
+      .filter((s) => s.effectiveStatus !== "hidden")
+      .sort((a, b) => a.order - b.order);
+  }, [subcategories, currentCategoryData, categoryStatus]);
+
+  // Subcategoria atualmente selecionada
   const currentSubcategoryData = useMemo(() => {
     if (!selectedSubcategory) return null;
-    return subcategories.find(
-      (s) =>
-        (s.id === selectedSubcategory || s.slug === selectedSubcategory) &&
-        (!currentCategoryData || s.categoryId === currentCategoryData.id)
+    return (
+      subcategories.find(
+        (s) =>
+          (s.id === selectedSubcategory || s.slug === selectedSubcategory) &&
+          (!currentCategoryData || s.categoryId === currentCategoryData.id)
+      ) || null
     );
   }, [subcategories, selectedSubcategory, currentCategoryData]);
 
-  // Aulas vinculadas estritamente à subcategoria aberta
+  const subcategoryEffectiveStatus = getSubcategoryStatus(
+    currentSubcategoryData,
+    currentCategoryData
+  );
+
+  // Aulas vinculadas estritamente à subcategoria aberta (apenas se AMBAS forem 'available')
   const subcategoryLessons = useMemo(() => {
-    if (!currentCategoryData || !currentSubcategoryData || !currentCategoryData.published || !currentSubcategoryData.published) return [];
+    if (
+      !currentCategoryData ||
+      !currentSubcategoryData ||
+      categoryStatus !== "available" ||
+      subcategoryEffectiveStatus !== "available"
+    ) {
+      return [];
+    }
+
     return lessons.filter(
       (l) =>
         l.status === "publicado" &&
         l.categoryId === currentCategoryData.id &&
         l.subcategoryId === currentSubcategoryData.id
     );
-  }, [lessons, currentCategoryData, currentSubcategoryData]);
+  }, [lessons, currentCategoryData, currentSubcategoryData, categoryStatus, subcategoryEffectiveStatus]);
 
   const handleOpenCategory = (catSlug: string) => {
     router.push(`/aluna/programas?categoria=${encodeURIComponent(catSlug)}`);
@@ -96,101 +151,66 @@ function ProgramsContent() {
   };
 
   /* =========================================================================
-     CASO 1: CATEGORIA INDISPONÍVEL / EM ATUALIZAÇÃO
+     CASO DE CATEGORIA OCULTA OU INEXISTENTE ACESSADA POR URL
      ========================================================================= */
-  if (currentCategoryData && !currentCategoryData.published) {
+  if (selectedCategory && (!currentCategoryData || categoryStatus === "hidden")) {
     return (
-      <div className="space-y-6 sm:space-y-7 animate-fade-in py-1">
-        <div className="pt-1">
-          <button
-            type="button"
-            onClick={handleBackToCategories}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#827B77] hover:text-[#292321] transition cursor-pointer"
-          >
-            <ChevronLeft className="w-4 h-4 text-[#B77D82]" />
-            <span>Voltar para todas as categorias</span>
-          </button>
+      <div className="space-y-6 animate-fade-in py-6 max-w-md mx-auto text-center">
+        <div className="w-14 h-14 rounded-full bg-[#FAF7F2] text-[#827B77] mx-auto flex items-center justify-center border border-[#EADBCE]">
+          <AlertCircle className="w-7 h-7 text-[#827B77]" />
         </div>
-
-        <div className="bg-white rounded-[28px] border border-[#EADBCE] p-8 sm:p-12 text-center space-y-4 shadow-2xs max-w-xl mx-auto">
-          <div className="w-14 h-14 rounded-full bg-[#FAF7F2] text-[#B77D82] mx-auto flex items-center justify-center border border-[#EADBCE]">
-            <Sparkles className="w-6 h-6" />
-          </div>
-          <div className="space-y-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#B77D82] block">
-              {currentCategoryData.name}
-            </span>
-            <h2 className="font-serif text-2xl sm:text-3xl font-bold text-[#292321]">
-              Em atualização
-            </h2>
-            <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-sm mx-auto">
-              Em breve teremos aulas nesta categoria. Estamos preparando práticas especiais para o seu momento.
-            </p>
-          </div>
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={handleBackToCategories}
-              className="px-5 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition shadow-xs cursor-pointer"
-            >
-              Explorar outras categorias
-            </button>
-          </div>
+        <div className="space-y-2">
+          <h2 className="font-serif text-2xl font-bold text-[#292321]">
+            Categoria não encontrada
+          </h2>
+          <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed">
+            Esta categoria não está disponível no momento para as alunas.
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={handleBackToCategories}
+          className="px-5 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition shadow-xs cursor-pointer"
+        >
+          Voltar para todas as categorias
+        </button>
       </div>
     );
   }
 
   /* =========================================================================
-     CASO 2: SUBCATEGORIA INDISPONÍVEL / EM ATUALIZAÇÃO
+     ETAPA 3: LISTAGEM DE AULAS DA SUBCATEGORIA ABERTA
      ========================================================================= */
-  if (currentCategoryData && currentSubcategoryData && !currentSubcategoryData.published) {
-    return (
-      <div className="space-y-6 sm:space-y-7 animate-fade-in py-1">
-        <div className="pt-1">
+  if (currentCategoryData && currentSubcategoryData) {
+    // Se a subcategoria for oculta
+    if (subcategoryEffectiveStatus === "hidden") {
+      return (
+        <div className="space-y-6 animate-fade-in py-6 max-w-md mx-auto text-center">
+          <div className="w-14 h-14 rounded-full bg-[#FAF7F2] text-[#827B77] mx-auto flex items-center justify-center border border-[#EADBCE]">
+            <AlertCircle className="w-7 h-7 text-[#827B77]" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="font-serif text-2xl font-bold text-[#292321]">
+              Tema não encontrado
+            </h2>
+            <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed">
+              Este tema não está disponível no momento.
+            </p>
+          </div>
           <button
             type="button"
             onClick={handleBackToSubcategories}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#827B77] hover:text-[#292321] transition cursor-pointer"
+            className="px-5 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition shadow-xs cursor-pointer"
           >
-            <ChevronLeft className="w-4 h-4 text-[#B77D82]" />
-            <span>Voltar aos temas de {currentCategoryData.name}</span>
+            Voltar aos temas de {currentCategoryData.name}
           </button>
         </div>
+      );
+    }
 
-        <div className="bg-white rounded-[28px] border border-[#EADBCE] p-8 sm:p-12 text-center space-y-4 shadow-2xs max-w-xl mx-auto">
-          <div className="w-14 h-14 rounded-full bg-[#FAF7F2] text-[#B77D82] mx-auto flex items-center justify-center border border-[#EADBCE]">
-            <Sparkles className="w-6 h-6" />
-          </div>
-          <div className="space-y-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#B77D82] block">
-              {currentCategoryData.name} • {currentSubcategoryData.name}
-            </span>
-            <h2 className="font-serif text-2xl sm:text-3xl font-bold text-[#292321]">
-              Em atualização
-            </h2>
-            <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-sm mx-auto">
-              Em breve teremos aulas neste tema. Estamos finalizando as práticas para disponibilizar para você.
-            </p>
-          </div>
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={handleBackToSubcategories}
-              className="px-5 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition shadow-xs cursor-pointer"
-            >
-              Ver outros temas disponíveis
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    // Se a categoria OU a subcategoria estiverem "Em atualização"
+    const isUpdating = categoryStatus === "updating" || subcategoryEffectiveStatus === "updating";
 
-  /* =========================================================================
-     ETAPA 3: LISTAGEM DE AULAS DA SUBCATEGORIA ATIVA
-     ========================================================================= */
-  if (currentCategoryData && currentSubcategoryData) {
     return (
       <div className="space-y-6 sm:space-y-7 animate-fade-in py-1">
         {/* Botão Voltar */}
@@ -206,10 +226,19 @@ function ProgramsContent() {
         </div>
 
         {/* Cabeçalho da Subcategoria Aberta */}
-        <header className="space-y-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[#B77D82] block">
-            {currentCategoryData.name}
-          </span>
+        <header className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#B77D82]">
+              {currentCategoryData.name}
+            </span>
+            {isUpdating && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                <Clock3 className="w-3 h-3" />
+                Em atualização
+              </span>
+            )}
+          </div>
+
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#292321] tracking-tight">
             {currentSubcategoryData.name}
           </h1>
@@ -220,15 +249,55 @@ function ProgramsContent() {
           )}
         </header>
 
-        {/* Grade de Aulas */}
+        {/* AVISO MANDATÓRIO CASO ESTEJA EM ATUALIZAÇÃO */}
+        {isUpdating && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/70 border border-amber-200 flex items-start gap-3 shadow-2xs">
+            <Clock3 className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <h3 className="text-xs sm:text-sm font-bold text-amber-950 font-serif">
+                Em atualização — nossas aulas estarão disponíveis em breve.
+              </h3>
+              <p className="text-[11px] sm:text-xs text-amber-900 leading-relaxed font-sans">
+                {categoryStatus === "updating"
+                  ? `A categoria "${currentCategoryData.name}" está sendo atualizada com novas práticas exclusivas. O acesso às aulas está temporariamente pausado.`
+                  : "Estamos refinando as práticas deste tema para oferecer a melhor experiência para você."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Grade de Aulas ou Bloqueio */}
         <section aria-label="Aulas disponíveis">
-          {subcategoryLessons.length === 0 ? (
+          {isUpdating ? (
+            <div className="bg-white rounded-[26px] border border-[#EADBCE] p-8 sm:p-12 text-center space-y-3 shadow-2xs">
+              <div className="w-14 h-14 rounded-full bg-[#FAF7F2] text-amber-700 mx-auto flex items-center justify-center border border-amber-200">
+                <Clock3 className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-serif font-bold text-base sm:text-lg text-[#292321]">
+                  Aulas temporariamente indisponíveis
+                </h3>
+                <p className="text-xs sm:text-sm text-[#827B77] max-w-md mx-auto leading-relaxed">
+                  Em atualização — nossas aulas estarão disponíveis em breve. Explore outros temas já liberados em nossa plataforma.
+                </p>
+              </div>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleBackToSubcategories}
+                  className="px-5 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition shadow-xs cursor-pointer"
+                >
+                  Ver outros temas de {currentCategoryData.name}
+                </button>
+              </div>
+            </div>
+          ) : subcategoryLessons.length === 0 ? (
             <div className="bg-white rounded-[26px] border border-[#EADBCE] p-8 sm:p-10 text-center space-y-2.5 shadow-2xs">
               <div className="w-12 h-12 rounded-full bg-[#FAF7F2] text-[#B77D82] mx-auto flex items-center justify-center">
                 <Play className="w-5 h-5 opacity-60 ml-0.5" />
               </div>
               <h3 className="font-serif font-bold text-base text-[#292321]">
-                Em atualização — em breve teremos aulas nesta subcategoria.
+                Em breve novas aulas neste tema
               </h3>
               <p className="text-xs text-[#827B77] max-w-sm mx-auto leading-relaxed">
                 As novas aulas cadastradas aparecerão aqui automaticamente.
@@ -301,9 +370,11 @@ function ProgramsContent() {
   }
 
   /* =========================================================================
-     ETAPA 2: TELA DE DETALHE DA CATEGORIA (Screen 3 da referência)
+     ETAPA 2: TELA DE DETALHE DA CATEGORIA (LISTAGEM DE TEMAS / SUBCATEGORIAS)
      ========================================================================= */
   if (currentCategoryData) {
+    const isCategoryUpdating = categoryStatus === "updating";
+
     return (
       <div className="space-y-6 sm:space-y-7 animate-fade-in py-1">
         {/* Botão Voltar */}
@@ -318,15 +389,42 @@ function ProgramsContent() {
           </button>
         </div>
 
-        {/* Título da Categoria em destaque editorial */}
-        <header className="space-y-1">
-          <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-medium tracking-tight text-[#292321]">
-            {currentCategoryData.name}
-          </h1>
+        {/* Título da Categoria em destaque editorial com badge se estiver em atualização */}
+        <header className="space-y-1.5">
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-medium tracking-tight text-[#292321]">
+              {currentCategoryData.name}
+            </h1>
+            {isCategoryUpdating && (
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                <Clock3 className="w-3.5 h-3.5" />
+                Em atualização
+              </span>
+            )}
+          </div>
         </header>
 
-        {/* Banner com foto real da categoria */}
-        <div className="relative rounded-[26px] overflow-hidden border border-[#EADBCE] shadow-xs bg-[#F3EAE3] aspect-[16/8] sm:aspect-[21/9]">
+        {/* AVISO DE DESTAQUE MANDATÓRIO SE A CATEGORIA ESTIVER EM ATUALIZAÇÃO */}
+        {isCategoryUpdating && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/80 border border-amber-200 flex items-start gap-3 shadow-2xs">
+            <Clock3 className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <h3 className="text-xs sm:text-sm font-bold text-amber-950 font-serif">
+                Em atualização — nossas aulas estarão disponíveis em breve.
+              </h3>
+              <p className="text-[11px] sm:text-xs text-amber-900 leading-relaxed font-sans">
+                Estamos finalizando práticas especiais nesta categoria. Os temas e aulas abaixo ficarão liberados assim que a atualização for concluída.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Banner com foto real da categoria (esmaecido/cinza se estiver em atualização) */}
+        <div
+          className={`relative rounded-[26px] overflow-hidden border border-[#EADBCE] shadow-xs bg-[#F3EAE3] aspect-[16/8] sm:aspect-[21/9] ${
+            isCategoryUpdating ? "filter grayscale contrast-90 opacity-75" : ""
+          }`}
+        >
           {currentCategoryData.bannerUrl ? (
             <img
               src={currentCategoryData.bannerUrl}
@@ -347,16 +445,23 @@ function ProgramsContent() {
 
         {/* Descrição curta da categoria */}
         {currentCategoryData.description && (
-          <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-2xl">
+          <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-2xl font-sans">
             {currentCategoryData.description}
           </p>
         )}
 
         {/* Seção "Escolha um tema" com lista de subcategorias */}
         <section aria-labelledby="choose-theme-heading" className="space-y-3.5 pt-1">
-          <h2 id="choose-theme-heading" className="font-serif text-xl sm:text-2xl font-bold text-[#292321]">
-            Escolha um tema
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 id="choose-theme-heading" className="font-serif text-xl sm:text-2xl font-bold text-[#292321]">
+              Escolha um tema
+            </h2>
+            {isCategoryUpdating && (
+              <span className="text-[11px] text-amber-800 font-semibold bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                Temas com aulas em atualização
+              </span>
+            )}
+          </div>
 
           {linkedSubcategories.length === 0 ? (
             <div className="bg-white rounded-[24px] border border-[#EADBCE] p-8 text-center space-y-2 shadow-2xs">
@@ -374,17 +479,26 @@ function ProgramsContent() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
               {linkedSubcategories.map((sub) => {
                 const subImage = sub.imageUrl || currentCategoryData.bannerUrl;
+                const isSubUpdating = isCategoryUpdating || sub.effectiveStatus === "updating";
 
                 return (
                   <button
                     key={sub.id}
                     type="button"
                     onClick={() => handleOpenSubcategory(sub.slug || sub.id)}
-                    className="p-3 sm:p-3.5 rounded-2xl border border-[#EADBCE] bg-white text-left transition hover:border-[#B77D82]/60 hover:shadow-2xs active:scale-[0.99] cursor-pointer flex items-center justify-between gap-3 group"
+                    className={`p-3 sm:p-3.5 rounded-2xl border text-left transition hover:shadow-2xs active:scale-[0.99] cursor-pointer flex items-center justify-between gap-3 group ${
+                      isSubUpdating
+                        ? "border-amber-200/80 bg-[#FAF8F5] hover:border-amber-300"
+                        : "border-[#EADBCE] bg-white hover:border-[#B77D82]/60"
+                    }`}
                   >
                     <div className="flex items-center gap-3.5 min-w-0">
                       {subImage ? (
-                        <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-xl overflow-hidden border border-[#EADBCE]/70 shrink-0 bg-[#FAF7F2]">
+                        <div
+                          className={`w-16 h-16 sm:w-18 sm:h-18 rounded-xl overflow-hidden border border-[#EADBCE]/70 shrink-0 bg-[#FAF7F2] ${
+                            isSubUpdating ? "filter grayscale contrast-90 opacity-75" : ""
+                          }`}
+                        >
                           <img
                             src={subImage}
                             alt={sub.name}
@@ -398,11 +512,20 @@ function ProgramsContent() {
                       )}
 
                       <div className="min-w-0 space-y-0.5">
-                        <h3 className="font-serif font-bold text-sm sm:text-base text-[#292321] group-hover:text-[#B77D82] transition-colors line-clamp-1">
-                          {sub.name}
-                        </h3>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h3 className="font-serif font-bold text-sm sm:text-base text-[#292321] group-hover:text-[#B77D82] transition-colors line-clamp-1">
+                            {sub.name}
+                          </h3>
+                          {isSubUpdating && (
+                            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                              Em atualização
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[11px] sm:text-xs text-[#827B77] line-clamp-1">
-                          {sub.description || "Aulas e sequências guiadas"}
+                          {isSubUpdating
+                            ? "Em atualização — nossas aulas estarão disponíveis em breve."
+                            : sub.description || "Aulas e sequências guiadas"}
                         </p>
                       </div>
                     </div>
@@ -421,7 +544,7 @@ function ProgramsContent() {
   }
 
   /* =========================================================================
-     ETAPA 1: TELA DE EXPLORAR CATEGORIAS (Screen 2 da referência)
+     ETAPA 1: TELA DE EXPLORAR CATEGORIAS
      ========================================================================= */
   return (
     <div className="space-y-6 sm:space-y-7 animate-fade-in py-1">
@@ -435,23 +558,32 @@ function ProgramsContent() {
         </p>
       </section>
 
-      {/* Cartões verticais de categoria largos com foto integrada (conforme referência) */}
+      {/* Cartões verticais de categoria largos com foto integrada */}
       <section aria-label="Categorias de Pilates" className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-          {publishedCategories.map((category) => {
+          {visibleCategories.map((category) => {
+            const status = getCategoryStatus(category);
+            const isUpdating = status === "updating";
+
             return (
               <button
                 key={category.id}
                 type="button"
                 onClick={() => handleOpenCategory(category.slug)}
-                className="group relative w-full rounded-[28px] overflow-hidden border border-[#EADBCE] bg-[#F5EFE8] text-left shadow-2xs hover:border-[#B77D82]/60 hover:shadow-sm transition-all duration-300 active:scale-[0.99] cursor-pointer min-h-[150px] sm:min-h-[170px] aspect-[16/7.5] sm:aspect-[21/9] flex items-center"
+                className={`group relative w-full rounded-[28px] overflow-hidden border text-left shadow-2xs transition-all duration-300 active:scale-[0.99] cursor-pointer min-h-[150px] sm:min-h-[170px] aspect-[16/7.5] sm:aspect-[21/9] flex items-center ${
+                  isUpdating
+                    ? "border-amber-200/90 bg-[#FAF8F5] hover:border-amber-300 hover:shadow-sm"
+                    : "border-[#EADBCE] bg-[#F5EFE8] hover:border-[#B77D82]/60 hover:shadow-sm"
+                }`}
               >
-                {/* Imagem fotográfica horizontal integrada ocupando a composição inteira do card */}
+                {/* Imagem fotográfica horizontal integrada (tons de cinza/esmaecido se estiver em atualização) */}
                 {category.bannerUrl ? (
                   <img
                     src={category.bannerUrl}
                     alt={category.name}
-                    className="absolute inset-0 w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-[1.03]"
+                    className={`absolute inset-0 w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-[1.03] ${
+                      isUpdating ? "filter grayscale contrast-90 opacity-75" : ""
+                    }`}
                   />
                 ) : (
                   <div className="absolute inset-0 bg-[#F3EAE3] flex items-center justify-end pr-10 text-[#B77D82]/40">
@@ -460,23 +592,38 @@ function ProgramsContent() {
                 )}
 
                 {/* Gradiente sutil em marfim/areia para garantir leitura nítida e estética acolhedora */}
-                <div className="absolute inset-0 bg-gradient-to-r from-[#FAF7F2]/95 via-[#FAF7F2]/80 via-45% to-transparent pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-r from-[#FAF7F2]/95 via-[#FAF7F2]/85 via-50% to-transparent pointer-events-none" />
 
-                {/* Conteúdo sobreposto: Título, Descrição e Botão circular */}
+                {/* Conteúdo sobreposto: Título, Badge, Descrição e Botão circular */}
                 <div className="relative z-10 w-full h-full p-5 sm:p-6 flex items-center justify-between gap-4">
-                  {/* Textos: Nome da categoria e descrição */}
-                  <div className="min-w-0 max-w-[65%] sm:max-w-[60%] space-y-1">
-                    <h3 className="font-serif text-xl sm:text-2xl text-[#292321] group-hover:text-[#B77D82] transition-colors leading-tight drop-shadow-2xs">
-                      {category.name}
-                    </h3>
-                    {category.description && (
-                      <p className="text-xs sm:text-sm text-[#6A635E] line-clamp-2 leading-relaxed font-sans">
-                        {category.description}
+                  {/* Textos: Nome da categoria, Aviso e descrição */}
+                  <div className="min-w-0 max-w-[70%] sm:max-w-[65%] space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-serif text-xl sm:text-2xl text-[#292321] group-hover:text-[#B77D82] transition-colors leading-tight drop-shadow-2xs">
+                        {category.name}
+                      </h3>
+                      {isUpdating && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                          <Clock3 className="w-3 h-3" />
+                          Em atualização
+                        </span>
+                      )}
+                    </div>
+
+                    {isUpdating ? (
+                      <p className="text-xs sm:text-sm text-amber-900 font-medium line-clamp-2 leading-relaxed font-sans">
+                        Em atualização — nossas aulas estarão disponíveis em breve.
                       </p>
+                    ) : (
+                      category.description && (
+                        <p className="text-xs sm:text-sm text-[#6A635E] line-clamp-2 leading-relaxed font-sans">
+                          {category.description}
+                        </p>
+                      )
                     )}
                   </div>
 
-                  {/* Botão de seta em círculo claro à direita, exatamente como na referência */}
+                  {/* Botão de seta em círculo claro à direita */}
                   <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/95 text-[#292321] border border-[#EADBCE]/80 shadow-md flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-white group-hover:text-[#B77D82] transition-all">
                     <ChevronRight className="w-5 h-5 stroke-[2.2]" />
                   </div>

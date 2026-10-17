@@ -21,6 +21,8 @@ export interface User {
   customPlan?: QuizPlanResult | null;
 }
 
+export type PublicationStatus = 'available' | 'updating' | 'hidden';
+
 export interface Category {
   id: string;
   slug: string;
@@ -29,6 +31,7 @@ export interface Category {
   bannerUrl?: string;
   order: number;
   published: boolean;
+  status: PublicationStatus;
 }
 
 export interface Subcategory {
@@ -40,6 +43,7 @@ export interface Subcategory {
   imageUrl?: string;
   order: number;
   published: boolean;
+  status: PublicationStatus;
 }
 
 export type LessonLevel = 'iniciante' | 'intermediário' | 'avançado';

@@ -33,6 +33,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     bannerUrl: "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1000&q=80",
     order: 1,
     published: true,
+    status: "available",
   },
   {
     id: "cat-2",
@@ -42,6 +43,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     bannerUrl: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?auto=format&fit=crop&w=1000&q=80",
     order: 2,
     published: true,
+    status: "available",
   },
   {
     id: "cat-3",
@@ -51,6 +53,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     bannerUrl: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1000&q=80",
     order: 3,
     published: true,
+    status: "available",
   },
   {
     id: "cat-4",
@@ -60,6 +63,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     bannerUrl: "https://images.unsplash.com/photo-1508215885820-465610260714?auto=format&fit=crop&w=1000&q=80",
     order: 4,
     published: true,
+    status: "available",
   },
   {
     id: "cat-5",
@@ -69,6 +73,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     bannerUrl: "https://images.unsplash.com/photo-1575052814086-f385e2e2ad1b?auto=format&fit=crop&w=1000&q=80",
     order: 5,
     published: true,
+    status: "available",
   },
   {
     id: "cat-6",
@@ -78,6 +83,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     bannerUrl: "https://images.unsplash.com/photo-1518310383802-640c2de311b2?auto=format&fit=crop&w=1000&q=80",
     order: 6,
     published: true,
+    status: "available",
   },
   {
     id: "cat-7",
@@ -87,6 +93,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     bannerUrl: "https://images.unsplash.com/photo-1599447421416-3414500d18a5?auto=format&fit=crop&w=1000&q=80",
     order: 7,
     published: true,
+    status: "available",
   },
   {
     id: "cat-8",
@@ -96,6 +103,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     bannerUrl: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1000&q=80",
     order: 8,
     published: true,
+    status: "available",
   },
   {
     id: "cat-comunidade",
@@ -105,63 +113,64 @@ export const INITIAL_CATEGORIES: Category[] = [
     bannerUrl: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1000&q=80",
     order: 9,
     published: true,
+    status: "available",
   },
 ];
 
 export const INITIAL_SUBCATEGORIES: Subcategory[] = [
   // Categoria 1: Emagrecimento e Definição
-  { id: "sub-1-1", categoryId: "cat-1", slug: "pilates-para-emagrecimento", name: "Pilates para Emagrecimento", order: 1, published: true },
-  { id: "sub-1-2", categoryId: "cat-1", slug: "pilates-para-abdomen-definido", name: "Pilates para Abdômen Definido", order: 2, published: true },
-  { id: "sub-1-3", categoryId: "cat-1", slug: "pilates-para-gluteos-e-pernas", name: "Pilates para Glúteos e Pernas", order: 3, published: true },
-  { id: "sub-1-4", categoryId: "cat-1", slug: "pilates-para-definicao-corporal", name: "Pilates para Definição Corporal", order: 4, published: true },
-  { id: "sub-1-5", categoryId: "cat-1", slug: "pilates-para-coxas", name: "Pilates para Coxas", order: 5, published: true },
-  { id: "sub-1-6", categoryId: "cat-1", slug: "pilates-para-gluteos-firmes", name: "Pilates para Glúteos Firmes", order: 6, published: true },
-  { id: "sub-1-7", categoryId: "cat-1", slug: "pilates-para-o-corpo-inteiro", name: "Pilates para o Corpo Inteiro", order: 7, published: true },
+  { id: "sub-1-1", categoryId: "cat-1", slug: "pilates-para-emagrecimento", name: "Pilates para Emagrecimento", order: 1, published: true, status: "available" },
+  { id: "sub-1-2", categoryId: "cat-1", slug: "pilates-para-abdomen-definido", name: "Pilates para Abdômen Definido", order: 2, published: true, status: "available" },
+  { id: "sub-1-3", categoryId: "cat-1", slug: "pilates-para-gluteos-e-pernas", name: "Pilates para Glúteos e Pernas", order: 3, published: true, status: "available" },
+  { id: "sub-1-4", categoryId: "cat-1", slug: "pilates-para-definicao-corporal", name: "Pilates para Definição Corporal", order: 4, published: true, status: "available" },
+  { id: "sub-1-5", categoryId: "cat-1", slug: "pilates-para-coxas", name: "Pilates para Coxas", order: 5, published: true, status: "available" },
+  { id: "sub-1-6", categoryId: "cat-1", slug: "pilates-para-gluteos-firmes", name: "Pilates para Glúteos Firmes", order: 6, published: true, status: "available" },
+  { id: "sub-1-7", categoryId: "cat-1", slug: "pilates-para-o-corpo-inteiro", name: "Pilates para o Corpo Inteiro", order: 7, published: true, status: "available" },
 
   // Categoria 2: Mobilidade e Flexibilidade
-  { id: "sub-2-1", categoryId: "cat-2", slug: "pilates-para-mobilidade", name: "Pilates para Mobilidade", order: 1, published: true },
-  { id: "sub-2-2", categoryId: "cat-2", slug: "pilates-para-flexibilidade", name: "Pilates para Flexibilidade", order: 2, published: true },
-  { id: "sub-2-3", categoryId: "cat-2", slug: "alongamento-e-amplitude-de-movimento", name: "Alongamento e amplitude de movimento", order: 3, published: true },
+  { id: "sub-2-1", categoryId: "cat-2", slug: "pilates-para-mobilidade", name: "Pilates para Mobilidade", order: 1, published: true, status: "available" },
+  { id: "sub-2-2", categoryId: "cat-2", slug: "pilates-para-flexibilidade", name: "Pilates para Flexibilidade", order: 2, published: true, status: "available" },
+  { id: "sub-2-3", categoryId: "cat-2", slug: "alongamento-e-amplitude-de-movimento", name: "Alongamento e amplitude de movimento", order: 3, published: true, status: "available" },
 
   // Categoria 3: Postura e Fortalecimento
-  { id: "sub-3-1", categoryId: "cat-3", slug: "pilates-para-melhorar-a-postura", name: "Pilates para Melhorar a Postura", order: 1, published: true },
-  { id: "sub-3-2", categoryId: "cat-3", slug: "pilates-para-coluna-e-costas", name: "Pilates para Coluna e Costas", order: 2, published: true },
-  { id: "sub-3-3", categoryId: "cat-3", slug: "pilates-para-fortalecer-as-costas", name: "Pilates para Fortalecer as Costas", order: 3, published: true },
-  { id: "sub-3-4", categoryId: "cat-3", slug: "pilates-para-fortalecer-o-abdomen", name: "Pilates para Fortalecer o Abdômen", order: 4, published: true },
-  { id: "sub-3-5", categoryId: "cat-3", slug: "pilates-para-bracos-e-ombros", name: "Pilates para Braços e Ombros", order: 5, published: true },
-  { id: "sub-3-6", categoryId: "cat-3", slug: "pilates-para-o-assoalho-pelvico", name: "Pilates para o Assoalho Pélvico", order: 6, published: true },
+  { id: "sub-3-1", categoryId: "cat-3", slug: "pilates-para-melhorar-a-postura", name: "Pilates para Melhorar a Postura", order: 1, published: true, status: "available" },
+  { id: "sub-3-2", categoryId: "cat-3", slug: "pilates-para-coluna-e-costas", name: "Pilates para Coluna e Costas", order: 2, published: true, status: "available" },
+  { id: "sub-3-3", categoryId: "cat-3", slug: "pilates-para-fortalecer-as-costas", name: "Pilates para Fortalecer as Costas", order: 3, published: true, status: "available" },
+  { id: "sub-3-4", categoryId: "cat-3", slug: "pilates-para-fortalecer-o-abdomen", name: "Pilates para Fortalecer o Abdômen", order: 4, published: true, status: "available" },
+  { id: "sub-3-5", categoryId: "cat-3", slug: "pilates-para-bracos-e-ombros", name: "Pilates para Braços e Ombros", order: 5, published: true, status: "available" },
+  { id: "sub-3-6", categoryId: "cat-3", slug: "pilates-para-o-assoalho-pelvico", name: "Pilates para o Assoalho Pélvico", order: 6, published: true, status: "available" },
 
   // Categoria 4: Relaxamento e Bem-Estar
-  { id: "sub-4-1", categoryId: "cat-4", slug: "pilates-para-aliviar-o-estresse", name: "Pilates para Aliviar o Estresse", order: 1, published: true },
-  { id: "sub-4-2", categoryId: "cat-4", slug: "pilates-para-relaxamento", name: "Pilates para Relaxamento", order: 2, published: true },
-  { id: "sub-4-3", categoryId: "cat-4", slug: "pilates-para-despertar-o-corpo", name: "Pilates para Despertar o Corpo", order: 3, published: true },
-  { id: "sub-4-4", categoryId: "cat-4", slug: "pilates-para-dias-de-pouca-energia", name: "Pilates para Dias de Pouca Energia", order: 4, published: true },
-  { id: "sub-4-5", categoryId: "cat-4", slug: "pilates-para-fazer-antes-de-dormir", name: "Pilates para Fazer Antes de Dormir", order: 5, published: true },
-  { id: "sub-4-6", categoryId: "cat-4", slug: "respiracao-e-bem-estar", name: "Respiração e bem-estar", order: 6, published: true },
+  { id: "sub-4-1", categoryId: "cat-4", slug: "pilates-para-aliviar-o-estresse", name: "Pilates para Aliviar o Estresse", order: 1, published: true, status: "available" },
+  { id: "sub-4-2", categoryId: "cat-4", slug: "pilates-para-relaxamento", name: "Pilates para Relaxamento", order: 2, published: true, status: "available" },
+  { id: "sub-4-3", categoryId: "cat-4", slug: "pilates-para-despertar-o-corpo", name: "Pilates para Despertar o Corpo", order: 3, published: true, status: "available" },
+  { id: "sub-4-4", categoryId: "cat-4", slug: "pilates-para-dias-de-pouca-energia", name: "Pilates para Dias de Pouca Energia", order: 4, published: true, status: "available" },
+  { id: "sub-4-5", categoryId: "cat-4", slug: "pilates-para-fazer-antes-de-dormir", name: "Pilates para Fazer Antes de Dormir", order: 5, published: true, status: "available" },
+  { id: "sub-4-6", categoryId: "cat-4", slug: "respiracao-e-bem-estar", name: "Respiração e bem-estar", order: 6, published: true, status: "available" },
 
   // Categoria 5: Pilates para Iniciantes
-  { id: "sub-5-1", categoryId: "cat-5", slug: "primeiros-passos", name: "Primeiros passos", order: 1, published: true },
-  { id: "sub-5-2", categoryId: "cat-5", slug: "movimentos-basicos-respiracao-e-controle", name: "Movimentos básicos, respiração e controle corporal", order: 2, published: true },
-  { id: "sub-5-3", categoryId: "cat-5", slug: "pilates-de-baixo-impacto", name: "Pilates de Baixo Impacto", order: 3, published: true },
-  { id: "sub-5-4", categoryId: "cat-5", slug: "pilates-para-pouco-condicionamento", name: "Pilates para Pessoas com Pouco Condicionamento Físico", order: 4, published: true },
+  { id: "sub-5-1", categoryId: "cat-5", slug: "primeiros-passos", name: "Primeiros passos", order: 1, published: true, status: "available" },
+  { id: "sub-5-2", categoryId: "cat-5", slug: "movimentos-basicos-respiracao-e-controle", name: "Movimentos básicos, respiração e controle corporal", order: 2, published: true, status: "available" },
+  { id: "sub-5-3", categoryId: "cat-5", slug: "pilates-de-baixo-impacto", name: "Pilates de Baixo Impacto", order: 3, published: true, status: "available" },
+  { id: "sub-5-4", categoryId: "cat-5", slug: "pilates-para-pouco-condicionamento", name: "Pilates para Pessoas com Pouco Condicionamento Físico", order: 4, published: true, status: "available" },
 
   // Categoria 6: Longevidade e Equilíbrio
-  { id: "sub-6-1", categoryId: "cat-6", slug: "pilates-para-longevidade-saudavel", name: "Pilates para Longevidade Saudável", order: 1, published: true },
-  { id: "sub-6-2", categoryId: "cat-6", slug: "pilates-para-melhorar-o-equilibrio", name: "Pilates para Melhorar o Equilíbrio", order: 2, published: true },
-  { id: "sub-6-3", categoryId: "cat-6", slug: "pilates-para-equilibrio-e-coordenacao", name: "Pilates para Equilíbrio e Coordenação", order: 3, published: true },
-  { id: "sub-6-4", categoryId: "cat-6", slug: "pilates-para-pessoas-50-mais", name: "Pilates para Pessoas 50+", order: 4, published: true },
+  { id: "sub-6-1", categoryId: "cat-6", slug: "pilates-para-longevidade-saudavel", name: "Pilates para Longevidade Saudável", order: 1, published: true, status: "available" },
+  { id: "sub-6-2", categoryId: "cat-6", slug: "pilates-para-melhorar-o-equilibrio", name: "Pilates para Melhorar o Equilíbrio", order: 2, published: true, status: "available" },
+  { id: "sub-6-3", categoryId: "cat-6", slug: "pilates-para-equilibrio-e-coordenacao", name: "Pilates para Equilíbrio e Coordenação", order: 3, published: true, status: "available" },
+  { id: "sub-6-4", categoryId: "cat-6", slug: "pilates-para-pessoas-50-mais", name: "Pilates para Pessoas 50+", order: 4, published: true, status: "available" },
 
   // Categoria 7: Pilates Express
-  { id: "sub-7-1", categoryId: "cat-7", slug: "aulas-de-5-minutos", name: "Aulas de 5 minutos", order: 1, published: true },
-  { id: "sub-7-2", categoryId: "cat-7", slug: "aulas-de-10-minutos", name: "Aulas de 10 minutos", order: 2, published: true },
-  { id: "sub-7-3", categoryId: "cat-7", slug: "aulas-de-15-minutos", name: "Aulas de 15 minutos", order: 3, published: true },
-  { id: "sub-7-4", categoryId: "cat-7", slug: "sessoes-rapidas-na-rotina", name: "Sessões rápidas para encaixar na rotina", order: 4, published: true },
+  { id: "sub-7-1", categoryId: "cat-7", slug: "aulas-de-5-minutos", name: "Aulas de 5 minutos", order: 1, published: true, status: "available" },
+  { id: "sub-7-2", categoryId: "cat-7", slug: "aulas-de-10-minutos", name: "Aulas de 10 minutos", order: 2, published: true, status: "available" },
+  { id: "sub-7-3", categoryId: "cat-7", slug: "aulas-de-15-minutos", name: "Aulas de 15 minutos", order: 3, published: true, status: "available" },
+  { id: "sub-7-4", categoryId: "cat-7", slug: "sessoes-rapidas-na-rotina", name: "Sessões rápidas para encaixar na rotina", order: 4, published: true, status: "available" },
 
   // Categoria 8: Desafios e Programas
-  { id: "sub-8-1", categoryId: "cat-8", slug: "programas-de-7-dias", name: "Programas de 7 dias", order: 1, published: true },
-  { id: "sub-8-2", categoryId: "cat-8", slug: "programas-de-14-dias", name: "Programas de 14 dias", order: 2, published: true },
-  { id: "sub-8-3", categoryId: "cat-8", slug: "programas-de-30-dias", name: "Programas de 30 dias", order: 3, published: true },
-  { id: "sub-8-4", categoryId: "cat-8", slug: "sequencias-guiadas-progressao", name: "Sequências guiadas com progressão planejada", order: 4, published: true },
+  { id: "sub-8-1", categoryId: "cat-8", slug: "programas-de-7-dias", name: "Programas de 7 dias", order: 1, published: true, status: "available" },
+  { id: "sub-8-2", categoryId: "cat-8", slug: "programas-de-14-dias", name: "Programas de 14 dias", order: 2, published: true, status: "available" },
+  { id: "sub-8-3", categoryId: "cat-8", slug: "programas-de-30-dias", name: "Programas de 30 dias", order: 3, published: true, status: "available" },
+  { id: "sub-8-4", categoryId: "cat-8", slug: "sequencias-guiadas-progressao", name: "Sequências guiadas com progressão planejada", order: 4, published: true, status: "available" },
 ];
 
 export const INITIAL_LESSONS: Lesson[] = [

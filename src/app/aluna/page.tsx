@@ -3,12 +3,14 @@
 import React from "react";
 import Link from "next/link";
 import { useApp } from "@/lib/store/context";
+import { Category, Subcategory, PublicationStatus } from "@/types";
 import {
   Clock,
   Play,
   ArrowRight,
   Compass,
   Sparkles,
+  Clock3,
 } from "lucide-react";
 
 function getBahiaDayNumber() {
@@ -25,20 +27,56 @@ function getBahiaDayNumber() {
   }
 }
 
+function getCategoryStatus(c?: Category | null): PublicationStatus {
+  if (!c) return "hidden";
+  if (c.status === "available" || c.status === "updating" || c.status === "hidden") {
+    return c.status;
+  }
+  return c.published === false ? "hidden" : "available";
+}
+
+function getSubcategoryStatus(s?: Subcategory | null, parent?: Category | null): PublicationStatus {
+  if (!s) return "hidden";
+  const parentStatus = getCategoryStatus(parent);
+  if (parentStatus === "hidden") return "hidden";
+
+  const rawStatus =
+    s.status === "available" || s.status === "updating" || s.status === "hidden"
+      ? s.status
+      : s.published === false
+      ? "hidden"
+      : "available";
+
+  if (rawStatus === "hidden") return "hidden";
+  if (parentStatus === "updating") return "updating";
+  return rawStatus;
+}
+
 export default function StudentDashboardPage() {
   const { currentUser, lessons, categories, subcategories } = useApp();
-  const activeCategoryIds = new Set(categories.filter((c) => c.published).map((c) => c.id));
-  const activeSubcategoryIds = new Set(
+
+  const categoryMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
+
+  // Apenas categorias e subcategorias 100% disponíveis liberam aulas para reprodução
+  const availableCategoryIds = new Set(
+    categories.filter((c) => getCategoryStatus(c) === "available").map((c) => c.id)
+  );
+
+  const availableSubcategoryIds = new Set(
     subcategories
-      .filter((s) => s.published && activeCategoryIds.has(s.categoryId))
+      .filter((s) => {
+        const parent = categoryMap.get(s.categoryId);
+        return getSubcategoryStatus(s, parent) === "available";
+      })
       .map((s) => s.id)
   );
 
+  // Aulas ativas: estritamente vinculadas a itens Disponíveis
   const publishedLessons = lessons.filter(
     (lesson) =>
       lesson.status === "publicado" &&
-      activeCategoryIds.has(lesson.categoryId) &&
-      activeSubcategoryIds.has(lesson.subcategoryId)
+      availableCategoryIds.has(lesson.categoryId) &&
+      availableSubcategoryIds.has(lesson.subcategoryId)
   );
 
   // Aula para continuar ou primeira aula disponível
@@ -52,9 +90,9 @@ export default function StudentDashboardPage() {
     ? recommendationOptions[getBahiaDayNumber() % recommendationOptions.length]
     : null;
 
-  // Categorias ativas
-  const activeCategories = categories
-    .filter((category) => category.published)
+  // Categorias ativas no carrossel da home (exclui ocultas)
+  const visibleCategories = categories
+    .filter((category) => getCategoryStatus(category) !== "hidden")
     .sort((a, b) => a.order - b.order);
 
   return (
@@ -130,21 +168,21 @@ export default function StudentDashboardPage() {
             Seu espaço de práticas está pronto
           </h2>
           <p className="text-xs text-[#827B77] max-w-sm mx-auto leading-relaxed">
-            As aulas do catálogo serão exibidas aqui para você iniciar seu momento de movimento.
+            As aulas disponíveis no catálogo serão exibidas aqui para você iniciar seu momento de movimento.
           </p>
         </section>
       )}
 
-      {/* 3. Bloco: Recomendado para Hoje (horizontal com thumbnail, texto e play) */}
+      {/* 3. Bloco: Recomendado para Hoje */}
       {recommendedLesson && (
         <section aria-label="Recomendado para hoje" className="space-y-2.5">
-          <article className="rounded-[24px] bg-white border border-[#EADBCE] p-3.5 sm:p-4.5 flex items-center gap-3.5 sm:gap-4 shadow-2xs hover:border-[#B77D82]/50 transition group">
-            <div className="relative w-22 h-22 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shrink-0 bg-[#F3EAE3] border border-[#EADBCE]/60">
+          <article className="p-4 rounded-3xl bg-white border border-[#EADBCE] shadow-2xs hover:border-[#B77D82]/50 transition flex items-center gap-4 group">
+            <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-[#F3EAE3] shrink-0">
               {recommendedLesson.thumbnailUrl ? (
                 <img
                   src={recommendedLesson.thumbnailUrl}
                   alt={recommendedLesson.title}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[#B77D82]">
@@ -200,33 +238,48 @@ export default function StudentDashboardPage() {
           </Link>
         </div>
 
-        {/* Linha de categorias: scroll suave em mobile, grid de 4 colunas em desktop */}
+        {/* Linha de categorias */}
         <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none sm:grid sm:grid-cols-4 sm:gap-4">
-          {activeCategories.slice(0, 4).map((category) => (
-            <Link
-              key={category.id}
-              href={`/aluna/programas?categoria=${category.slug}`}
-              className="w-28 sm:w-auto shrink-0 group flex flex-col items-center sm:items-start text-center sm:text-left cursor-pointer"
-            >
-              <div className="aspect-square w-full rounded-2xl overflow-hidden bg-[#F3EAE3] border border-[#EADBCE] shadow-2xs group-hover:border-[#B77D82]/60 group-hover:shadow-xs transition relative">
-                {category.bannerUrl ? (
-                  <img
-                    src={category.bannerUrl}
-                    alt={category.name}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[#B77D82]">
-                    <Compass className="w-8 h-8 opacity-50" />
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-black/5 group-hover:bg-transparent transition" />
-              </div>
-              <span className="font-medium text-xs text-[#292321] mt-2 group-hover:text-[#B77D82] transition line-clamp-2">
-                {category.name}
-              </span>
-            </Link>
-          ))}
+          {visibleCategories.slice(0, 4).map((category) => {
+            const isCatUpdating = getCategoryStatus(category) === "updating";
+
+            return (
+              <Link
+                key={category.id}
+                href={`/aluna/programas?categoria=${category.slug}`}
+                className="w-28 sm:w-auto shrink-0 group flex flex-col items-center sm:items-start text-center sm:text-left cursor-pointer"
+              >
+                <div
+                  className={`aspect-square w-full rounded-2xl overflow-hidden bg-[#F3EAE3] border border-[#EADBCE] shadow-2xs group-hover:border-[#B77D82]/60 group-hover:shadow-xs transition relative ${
+                    isCatUpdating ? "filter grayscale contrast-90 opacity-75" : ""
+                  }`}
+                >
+                  {category.bannerUrl ? (
+                    <img
+                      src={category.bannerUrl}
+                      alt={category.name}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[#B77D82]">
+                      <Compass className="w-8 h-8 opacity-50" />
+                    </div>
+                  )}
+                  {isCatUpdating && (
+                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center p-1">
+                      <span className="text-[9px] font-bold text-white bg-amber-700/80 px-2 py-0.5 rounded-full backdrop-blur-xs flex items-center gap-1">
+                        <Clock3 className="w-2.5 h-2.5" /> Em atualização
+                      </span>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/5 group-hover:bg-transparent transition" />
+                </div>
+                <span className="font-medium text-xs text-[#292321] mt-2 group-hover:text-[#B77D82] transition line-clamp-2">
+                  {category.name}
+                </span>
+              </Link>
+            );
+          })}
         </div>
       </section>
     </div>

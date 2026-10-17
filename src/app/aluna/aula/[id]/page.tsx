@@ -14,8 +14,36 @@ import {
   RotateCcw,
   Check,
   ChevronRight,
+  Clock3,
+  AlertCircle,
 } from "lucide-react";
 import confetti from "canvas-confetti";
+import { Category, Subcategory, PublicationStatus } from "@/types";
+
+function getCategoryStatus(c?: Category | null): PublicationStatus {
+  if (!c) return "hidden";
+  if (c.status === "available" || c.status === "updating" || c.status === "hidden") {
+    return c.status;
+  }
+  return c.published === false ? "hidden" : "available";
+}
+
+function getSubcategoryStatus(s?: Subcategory | null, parent?: Category | null): PublicationStatus {
+  if (!s) return "hidden";
+  const parentStatus = getCategoryStatus(parent);
+  if (parentStatus === "hidden") return "hidden";
+
+  const rawStatus =
+    s.status === "available" || s.status === "updating" || s.status === "hidden"
+      ? s.status
+      : s.published === false
+      ? "hidden"
+      : "available";
+
+  if (rawStatus === "hidden") return "hidden";
+  if (parentStatus === "updating") return "updating";
+  return rawStatus;
+}
 
 function LessonPlayerContent() {
   const params = useParams();
@@ -32,17 +60,18 @@ function LessonPlayerContent() {
   const category = categories.find((c) => c.id === lesson?.categoryId);
   const subcategory = subcategories.find((s) => s.id === lesson?.subcategoryId);
 
-  const isAvailable = Boolean(
-    lesson &&
-    (!category || category.published) &&
-    (!subcategory || subcategory.published)
-  );
+  const catStatus = getCategoryStatus(category);
+  const subStatus = getSubcategoryStatus(subcategory, category);
+
+  const isHidden = !lesson || catStatus === "hidden" || subStatus === "hidden";
+  const isUpdating = !isHidden && (catStatus === "updating" || subStatus === "updating");
+  const isAvailable = Boolean(lesson && !isHidden && !isUpdating);
 
   const isCompleted = currentUser?.completedLessonIds?.includes(lesson?.id || "") || false;
 
   useEffect(() => {
-    if (!lesson || lesson.videoProvider !== "r2") {
-      setPlaybackUrl(lesson?.videoUrl || "");
+    if (!lesson || !isAvailable || lesson.videoProvider !== "r2") {
+      setPlaybackUrl(isAvailable ? (lesson?.videoUrl || "") : "");
       setPlaybackError("");
       setIsLoadingPlayback(false);
       return;
@@ -67,20 +96,36 @@ function LessonPlayerContent() {
       })
       .finally(() => setIsLoadingPlayback(false));
     return () => controller.abort();
-  }, [lesson?.id, lesson?.videoProvider, lesson?.videoUrl, playbackRetry]);
+  }, [lesson?.id, lesson?.videoProvider, lesson?.videoUrl, playbackRetry, isAvailable]);
 
   // Próxima aula disponível na ordem da categoria ou catálogo
   const currentIndex = lesson ? lessons.findIndex((l) => l.id === lesson.id) : -1;
   const nextLesson =
-    lessons.slice(currentIndex + 1).find((l) => l.status === "publicado") ||
-    lessons.find((l) => l.id !== lesson?.id && l.status === "publicado");
+    lessons.slice(currentIndex + 1).find((l) => {
+      const lCat = categories.find((c) => c.id === l.categoryId);
+      const lSub = subcategories.find((s) => s.id === l.subcategoryId);
+      return (
+        l.status === "publicado" &&
+        getCategoryStatus(lCat) === "available" &&
+        getSubcategoryStatus(lSub, lCat) === "available"
+      );
+    }) ||
+    lessons.find((l) => {
+      const lCat = categories.find((c) => c.id === l.categoryId);
+      const lSub = subcategories.find((s) => s.id === l.subcategoryId);
+      return (
+        l.id !== lesson?.id &&
+        l.status === "publicado" &&
+        getCategoryStatus(lCat) === "available" &&
+        getSubcategoryStatus(lSub, lCat) === "available"
+      );
+    });
 
   const handleToggleComplete = () => {
-    if (!lesson) return;
+    if (!lesson || !isAvailable) return;
     toggleLessonCompletion(lesson.id);
 
     if (!isCompleted) {
-      // Disparar confetes elegantes
       try {
         confetti({
           particleCount: 40,
@@ -94,18 +139,19 @@ function LessonPlayerContent() {
     }
   };
 
-  if (!lesson || !isAvailable) {
+  // CASO 1: Aula Oculta ou inexistente
+  if (isHidden) {
     return (
       <div className="py-12 px-4 text-center space-y-4 max-w-md mx-auto animate-fade-in">
-        <div className="w-14 h-14 rounded-full bg-white text-[#B77D82] mx-auto flex items-center justify-center border border-[#EADBCE] shadow-xs">
-          <Sparkles className="w-6 h-6" />
+        <div className="w-14 h-14 rounded-full bg-white text-[#827B77] mx-auto flex items-center justify-center border border-[#EADBCE] shadow-xs">
+          <AlertCircle className="w-6 h-6 text-[#827B77]" />
         </div>
         <div className="space-y-1.5">
           <h2 className="font-serif font-bold text-xl text-[#292321]">
-            Aula em atualização
+            Aula não encontrada
           </h2>
           <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed">
-            Esta aula pertence a uma categoria ou tema que está temporariamente em atualização. Em breve o conteúdo estará disponível para você.
+            Esta aula não está disponível no momento para alunas.
           </p>
         </div>
         <div className="pt-2">
@@ -113,7 +159,39 @@ function LessonPlayerContent() {
             href="/aluna/programas"
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition shadow-xs"
           >
-            Voltar para a biblioteca
+            Voltar para os programas
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // CASO 2: Aula em Categoria ou Subcategoria "Em atualização"
+  if (isUpdating) {
+    return (
+      <div className="py-12 px-4 text-center space-y-4 max-w-md mx-auto animate-fade-in">
+        <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-700 mx-auto flex items-center justify-center border border-amber-200 shadow-xs">
+          <Clock3 className="w-6 h-6 text-amber-700" />
+        </div>
+        <div className="space-y-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+            Em atualização
+          </span>
+          <h2 className="font-serif font-bold text-xl sm:text-2xl text-[#292321]">
+            Em atualização — nossas aulas estarão disponíveis em breve.
+          </h2>
+          <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed max-w-sm mx-auto font-sans">
+            {catStatus === "updating"
+              ? `A categoria "${category?.name}" está passando por atualizações especiais. O acesso a essas aulas será liberado em breve.`
+              : `O tema "${subcategory?.name}" está passando por atualizações especiais. O acesso a essas aulas será liberado em breve.`}
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            href="/aluna/programas"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition shadow-xs"
+          >
+            Explorar outras aulas disponíveis
           </Link>
         </div>
       </div>

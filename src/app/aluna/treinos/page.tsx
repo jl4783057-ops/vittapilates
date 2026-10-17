@@ -16,18 +16,33 @@ import {
 export default function StudentMyWorkoutsPage() {
   const { currentUser, lessons, categories, subcategories } = useApp();
 
-  const activeCategoryIds = useMemo(
-    () => new Set(categories.filter((c) => c.published).map((c) => c.id)),
+  const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+
+  const availableCategoryIds = useMemo(
+    () =>
+      new Set(
+        categories
+          .filter((c) => (c.status ? c.status === "available" : c.published !== false))
+          .map((c) => c.id)
+      ),
     [categories]
   );
-  const activeSubcategoryIds = useMemo(
+
+  const availableSubcategoryIds = useMemo(
     () =>
       new Set(
         subcategories
-          .filter((s) => s.published && activeCategoryIds.has(s.categoryId))
+          .filter((s) => {
+            const parent = categoryMap.get(s.categoryId);
+            const parentIsAvailable = parent
+              ? (parent.status ? parent.status === "available" : parent.published !== false)
+              : false;
+            const subIsAvailable = s.status ? s.status === "available" : s.published !== false;
+            return parentIsAvailable && subIsAvailable;
+          })
           .map((s) => s.id)
       ),
-    [subcategories, activeCategoryIds]
+    [subcategories, categoryMap]
   );
 
   const publishedLessons = useMemo(
@@ -35,10 +50,10 @@ export default function StudentMyWorkoutsPage() {
       lessons.filter(
         (l) =>
           l.status === "publicado" &&
-          activeCategoryIds.has(l.categoryId) &&
-          activeSubcategoryIds.has(l.subcategoryId)
+          availableCategoryIds.has(l.categoryId) &&
+          availableSubcategoryIds.has(l.subcategoryId)
       ),
-    [lessons, activeCategoryIds, activeSubcategoryIds]
+    [lessons, availableCategoryIds, availableSubcategoryIds]
   );
 
   const completedLessonIds = useMemo(

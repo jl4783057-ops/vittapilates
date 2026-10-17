@@ -2,18 +2,18 @@
 
 import React, { useState } from "react";
 import { useApp } from "@/lib/store/context";
-import { Category } from "@/types";
+import { Category, PublicationStatus } from "@/types";
 import { ImageUploadField } from "@/components/ui/ImageUploadField";
 import {
-  FolderTree,
+  PublicationStatusSelector,
+  PublicationStatusSegmented,
+  PublicationStatusBadge,
+} from "@/components/admin/PublicationStatusSelector";
+import {
   Plus,
   Edit2,
   Trash2,
-  Eye,
-  EyeOff,
-  Check,
   X,
-  ArrowUpDown,
   Image as ImageIcon,
 } from "lucide-react";
 
@@ -30,7 +30,7 @@ export default function AdminCategoriesPage() {
     description: "",
     bannerUrl: "",
     order: 1,
-    published: true,
+    status: "available" as PublicationStatus,
   });
 
   // Carregar categorias salvas no Supabase
@@ -58,20 +58,27 @@ export default function AdminCategoriesPage() {
       description: "",
       bannerUrl: "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1000&q=80",
       order: categories.length + 1,
-      published: true,
+      status: "available",
     });
     setIsCreating(true);
   };
 
   const handleOpenEdit = (cat: Category) => {
     setEditingCat(cat);
+    const resolvedStatus: PublicationStatus =
+      cat.status === "available" || cat.status === "updating" || cat.status === "hidden"
+        ? cat.status
+        : cat.published === false
+        ? "hidden"
+        : "available";
+
     setFormData({
       name: cat.name,
       slug: cat.slug,
       description: cat.description,
       bannerUrl: cat.bannerUrl || "",
       order: cat.order,
-      published: cat.published,
+      status: resolvedStatus,
     });
   };
 
@@ -79,6 +86,9 @@ export default function AdminCategoriesPage() {
     e.preventDefault();
     setIsSaving(true);
     setToastMessage(null);
+
+    const status = formData.status;
+    const published = status !== "hidden";
 
     try {
       if (isCreating) {
@@ -89,7 +99,8 @@ export default function AdminCategoriesPage() {
           description: formData.description.trim(),
           bannerUrl: formData.bannerUrl,
           order: Number(formData.order),
-          published: formData.published,
+          published,
+          status,
         };
 
         const res = await fetch("/api/admin/categories", {
@@ -114,7 +125,8 @@ export default function AdminCategoriesPage() {
           description: formData.description.trim(),
           bannerUrl: formData.bannerUrl,
           order: Number(formData.order),
-          published: formData.published,
+          published,
+          status,
         };
 
         const res = await fetch("/api/admin/categories", {
@@ -130,7 +142,7 @@ export default function AdminCategoriesPage() {
 
         updateCategory(editingCat.id, updatedCat);
         setEditingCat(null);
-        setToastMessage({ type: "success", text: `Categoria "${updatedCat.name}" e banner atualizados com sucesso!` });
+        setToastMessage({ type: "success", text: `Categoria "${updatedCat.name}" e estado salvos com sucesso!` });
       }
 
       await loadCategories();
@@ -143,8 +155,13 @@ export default function AdminCategoriesPage() {
     }
   };
 
-  const togglePublish = async (cat: Category) => {
-    const updated = { ...cat, published: !cat.published };
+  const handleQuickStatusChange = async (cat: Category, newStatus: PublicationStatus) => {
+    const updated: Category = {
+      ...cat,
+      status: newStatus,
+      published: newStatus !== "hidden",
+    };
+
     try {
       const res = await fetch("/api/admin/categories", {
         method: "PUT",
@@ -154,20 +171,26 @@ export default function AdminCategoriesPage() {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "Erro ao atualizar status da categoria no Supabase.");
+        throw new Error(errData.error || "Erro ao atualizar estado da categoria no Supabase.");
       }
 
       updateCategory(cat.id, updated);
+      const statusLabels: Record<PublicationStatus, string> = {
+        available: "Disponível para alunas",
+        updating: "Em atualização (banner cinza e aviso)",
+        hidden: "Oculta (removida da área da aluna)",
+      };
+
       setToastMessage({
         type: "success",
-        text: `Categoria "${cat.name}" agora está ${updated.published ? "disponível para alunas" : "indisponível (em atualização)"}!`,
+        text: `Categoria "${cat.name}" agora está: ${statusLabels[newStatus]}!`,
       });
       await loadCategories();
       setTimeout(() => setToastMessage(null), 3500);
     } catch (err) {
       setToastMessage({
         type: "error",
-        text: err instanceof Error ? err.message : "Erro ao alterar disponibilidade.",
+        text: err instanceof Error ? err.message : "Erro ao alterar estado de publicação.",
       });
     }
   };
@@ -195,7 +218,7 @@ export default function AdminCategoriesPage() {
             Gestão de Categorias
           </h1>
           <p className="text-xs sm:text-sm text-[#827B77] mt-1">
-            Controle das categorias do catálogo, Comunidade oficial, banners e ordenação com persistência no Supabase.
+            Controle de publicação em 3 estados (Disponível, Em atualização e Oculta), banners e ordenação com persistência no Supabase.
           </p>
         </div>
 
@@ -212,98 +235,106 @@ export default function AdminCategoriesPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {categories
           .sort((a, b) => a.order - b.order)
-          .map((cat) => (
-            <div
-              key={cat.id}
-              className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] overflow-hidden shadow-2xs flex flex-col justify-between hover:border-[#B77D82]/50 transition group"
-            >
-              <div>
-                <div className="relative h-36 w-full bg-[#F3EAE3] overflow-hidden">
-                  {cat.bannerUrl ? (
-                    <img
-                      src={cat.bannerUrl}
-                      alt={cat.name}
-                      className="w-full h-full object-cover group-hover:scale-102 transition duration-300"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[#827B77]">
-                      <ImageIcon className="w-8 h-8" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                    <span className="bg-white/90 px-2 py-0.5 rounded-full text-[10px] font-bold text-[#292321]">
-                      Ordem: #{cat.order}
-                    </span>
-                    {cat.slug === "comunidade" && (
-                      <span className="bg-emerald-600 text-white px-2 py-0.5 rounded-full text-[10px] font-bold">
-                        Comunidade Alunas
-                      </span>
+          .map((cat) => {
+            const currentStatus: PublicationStatus =
+              cat.status === "available" || cat.status === "updating" || cat.status === "hidden"
+                ? cat.status
+                : cat.published === false
+                ? "hidden"
+                : "available";
+
+            return (
+              <div
+                key={cat.id}
+                className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] overflow-hidden shadow-2xs flex flex-col justify-between hover:border-[#B77D82]/50 transition group"
+              >
+                <div>
+                  <div className="relative h-36 w-full bg-[#F3EAE3] overflow-hidden">
+                    {cat.bannerUrl ? (
+                      <img
+                        src={cat.bannerUrl}
+                        alt={cat.name}
+                        className={`w-full h-full object-cover transition duration-300 ${
+                          currentStatus === "updating"
+                            ? "grayscale contrast-90 opacity-75"
+                            : currentStatus === "hidden"
+                            ? "opacity-50"
+                            : "group-hover:scale-102"
+                        }`}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[#827B77]">
+                        <ImageIcon className="w-8 h-8" />
+                      </div>
                     )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                    <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="bg-white/90 px-2 py-0.5 rounded-full text-[10px] font-bold text-[#292321]">
+                          #{cat.order}
+                        </span>
+                        {cat.slug === "comunidade" && (
+                          <span className="bg-emerald-600 text-white px-2 py-0.5 rounded-full text-[10px] font-bold">
+                            Comunidade
+                          </span>
+                        )}
+                      </div>
+                      <PublicationStatusBadge status={currentStatus} size="xs" />
+                    </div>
+
+                    <div className="absolute bottom-3 left-3 right-3 text-white">
+                      <h3 className="font-serif font-bold text-base leading-tight">
+                        {cat.name}
+                      </h3>
+                    </div>
                   </div>
-                  <div className="absolute bottom-3 left-3 right-3 text-white">
-                    <h3 className="font-serif font-bold text-base leading-tight">
-                      {cat.name}
-                    </h3>
+
+                  <div className="p-4 space-y-2">
+                    <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
+                      {cat.description}
+                    </p>
+                    <p className="text-[10px] text-[#827B77] font-mono">
+                      Slug: /{cat.slug}
+                    </p>
                   </div>
                 </div>
 
-                <div className="p-4 space-y-2">
-                  <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
-                    {cat.description}
-                  </p>
-                  <p className="text-[10px] text-[#827B77] font-mono">
-                    Slug: /{cat.slug}
-                  </p>
+                <div className="p-4 pt-2 border-t border-[#FAF7F2] space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#827B77]">
+                      Estado:
+                    </span>
+                    <PublicationStatusSegmented
+                      currentStatus={currentStatus}
+                      onChange={(newStatus) => handleQuickStatusChange(cat, newStatus)}
+                      size="xs"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-[#FAF7F2]">
+                    <button
+                      onClick={() => handleOpenEdit(cat)}
+                      className="p-2 rounded-xl text-[#827B77] hover:text-[#292321] hover:bg-[#FAF7F2] transition cursor-pointer"
+                      title="Editar"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Tem certeza que deseja excluir a categoria "${cat.name}"?`)) {
+                          deleteCategory(cat.id);
+                        }
+                      }}
+                      className="p-2 rounded-xl text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                      title="Excluir"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
-
-              <div className="p-4 pt-2 border-t border-[#FAF7F2] flex items-center justify-between gap-2">
-                <button
-                  onClick={() => togglePublish(cat)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition cursor-pointer ${
-                    cat.published
-                      ? "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
-                      : "bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100"
-                  }`}
-                  title={cat.published ? "Clique para desativar esta categoria" : "Clique para ativar esta categoria"}
-                >
-                  {cat.published ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Disponível para alunas</span>
-                    </>
-                  ) : (
-                    <>
-                      <EyeOff className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Indisponível (Em atualização)</span>
-                    </>
-                  )}
-                </button>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => handleOpenEdit(cat)}
-                    className="p-2 rounded-xl text-[#827B77] hover:text-[#292321] hover:bg-[#FAF7F2] transition"
-                    title="Editar"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm(`Tem certeza que deseja excluir a categoria "${cat.name}"?`)) {
-                        deleteCategory(cat.id);
-                      }
-                    }}
-                    className="p-2 rounded-xl text-rose-600 hover:bg-rose-50 transition"
-                    title="Excluir"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
       </div>
 
       {/* Modal de Criação / Edição de Categoria */}
@@ -319,7 +350,7 @@ export default function AdminCategoriesPage() {
                   setIsCreating(false);
                   setEditingCat(null);
                 }}
-                className="text-[#827B77] hover:text-[#292321]"
+                className="text-[#827B77] hover:text-[#292321] cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -367,7 +398,7 @@ export default function AdminCategoriesPage() {
 
               <ImageUploadField
                 label="Imagem / Banner da Categoria"
-                helperText="Clique em 'Enviar imagem' para selecionar a capa da categoria do seu Mac ou Windows (JPG, PNG ou WebP até 5 MB)."
+                helperText="Clique em 'Enviar imagem' para selecionar a capa da categoria do seu computador (JPG, PNG ou WebP até 5 MB)."
                 value={formData.bannerUrl}
                 onChange={(url) => setFormData({ ...formData, bannerUrl: url })}
                 aspectRatio="banner"
@@ -385,36 +416,13 @@ export default function AdminCategoriesPage() {
                 />
               </div>
 
-              {/* Controle Claro: Disponível para alunas */}
-              <div className="p-3.5 rounded-2xl border border-[#EADBCE] bg-[#FAF7F2] space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <label htmlFor="catPublished" className="text-xs font-bold text-[#292321] block cursor-pointer">
-                      Disponível para alunas
-                    </label>
-                    <span className="text-[11px] text-[#827B77] block mt-0.5">
-                      {formData.published
-                        ? "Ativa: alunas visualizam a categoria e suas práticas normalmente."
-                        : "Indisponível: a categoria fica em atualização e exibe aviso amigável na área de membros."}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, published: !formData.published })}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      formData.published ? "bg-[#B77D82]" : "bg-[#D8C7B8]"
-                    }`}
-                    role="switch"
-                    aria-checked={formData.published}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                        formData.published ? "translate-x-5" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
+              {/* Seletor Explícito dos 3 Estados */}
+              <div className="p-3.5 rounded-2xl border border-[#EADBCE] bg-white">
+                <PublicationStatusSelector
+                  value={formData.status}
+                  onChange={(newStatus) => setFormData({ ...formData, status: newStatus })}
+                  label="Estado de Publicação da Categoria"
+                />
               </div>
 
               <div className="pt-2 flex gap-2">

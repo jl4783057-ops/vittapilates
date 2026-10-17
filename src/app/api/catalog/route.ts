@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { isSupabaseAdminConfigured, getSupabaseAdmin } from "@/lib/supabase/admin";
-import { INITIAL_SETTINGS, INITIAL_CATEGORIES, INITIAL_SUBCATEGORIES, INITIAL_LESSONS } from "@/lib/data/initial-data";
+import { INITIAL_SETTINGS, INITIAL_CATEGORIES, INITIAL_SUBCATEGORIES } from "@/lib/data/initial-data";
 import { mapDbToSiteSettings } from "@/app/api/admin/settings/route";
 import { mapDbToCategory } from "@/app/api/admin/categories/route";
 import { mapDbToSubcategory } from "@/app/api/admin/subcategories/route";
+import { Category, Subcategory, PublicationStatus } from "@/types";
 
 // Endpoint público compartilhado para carregar configurações visuais, categorias e subcategorias
 // Nunca expõe aulas completas ou links de vídeos (video_url) para usuários não autenticados/sem acesso.
@@ -27,21 +28,38 @@ export async function GET() {
     ]);
 
     const siteSettings = settingsRes.data ? mapDbToSiteSettings(settingsRes.data) : INITIAL_SETTINGS;
-    const rawCategories = categoriesRes.data && categoriesRes.data.length > 0
+    const rawCategories: Category[] = categoriesRes.data && categoriesRes.data.length > 0
       ? categoriesRes.data.map(mapDbToCategory)
       : INITIAL_CATEGORIES;
-    const rawSubcategories = subcategoriesRes.data && subcategoriesRes.data.length > 0
+    const rawSubcategories: Subcategory[] = subcategoriesRes.data && subcategoriesRes.data.length > 0
       ? subcategoriesRes.data.map(mapDbToSubcategory)
       : INITIAL_SUBCATEGORIES;
 
-    // Mapa de disponibilidade de categorias pai
-    const activeCategoryIds = new Set(rawCategories.filter((c) => c.published).map((c) => c.id));
+    // Mapa de categorias pai para calcular herança de status
+    const categoryMap = new Map<string, Category>(rawCategories.map((c) => [c.id, c]));
 
-    // Subcategorias herdam a disponibilidade da categoria pai
-    const subcategories = rawSubcategories.map((sub) => ({
-      ...sub,
-      published: Boolean(sub.published && activeCategoryIds.has(sub.categoryId)),
-    }));
+    // Aplicação da regra da categoria pai às subcategorias:
+    // - Se categoria pai for 'hidden', a subcategoria fica 'hidden'.
+    // - Se categoria pai for 'updating', a subcategoria fica no mínimo 'updating' (a menos que já seja 'hidden').
+    // - Se categoria pai for 'available', a subcategoria mantém seu próprio status.
+    const subcategories: Subcategory[] = rawSubcategories.map((sub) => {
+      const parent = categoryMap.get(sub.categoryId);
+      let effectiveStatus: PublicationStatus = sub.status;
+
+      if (!parent || parent.status === "hidden") {
+        effectiveStatus = "hidden";
+      } else if (parent.status === "updating") {
+        effectiveStatus = sub.status === "hidden" ? "hidden" : "updating";
+      } else {
+        effectiveStatus = sub.status;
+      }
+
+      return {
+        ...sub,
+        status: effectiveStatus,
+        published: effectiveStatus !== "hidden",
+      };
+    });
 
     return NextResponse.json({
       configured: true,

@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { isSupabaseAdminConfigured, getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getStudentAccess, getUserFromBearer } from "@/lib/access";
 import { mapDbToLesson } from "@/app/api/admin/lessons/route";
+import { mapDbToCategory } from "@/app/api/admin/categories/route";
+import { mapDbToSubcategory } from "@/app/api/admin/subcategories/route";
 
 // GET /api/aluna/lessons
 // Retorna as aulas publicadas EXCLUSIVAMENTE para alunas com sessão Supabase válida
 // e acesso ativo (assinante ativa/trial ou cortesia vigente).
+// Apenas aulas cujas categoria e subcategoria estejam com status 'available' (Disponível).
 export async function GET(request: Request) {
   if (!isSupabaseAdminConfigured) {
     return NextResponse.json({ error: "Supabase não configurado." }, { status: 503 });
@@ -38,22 +41,31 @@ export async function GET(request: Request) {
   try {
     const admin = getSupabaseAdmin();
     const [catsRes, subsRes, lessonsRes] = await Promise.all([
-      admin.from("categories").select("id, published"),
-      admin.from("subcategories").select("id, category_id, published"),
+      admin.from("categories").select("*"),
+      admin.from("subcategories").select("*"),
       admin.from("lessons").select("*").eq("status", "publicado").order("display_order", { ascending: true }),
     ]);
 
     if (lessonsRes.error) throw lessonsRes.error;
 
-    const activeCatIds = new Set((catsRes.data || []).filter((c) => c.published).map((c) => c.id));
-    const activeSubIds = new Set(
-      (subsRes.data || [])
-        .filter((s) => s.published && activeCatIds.has(s.category_id))
+    const categories = (catsRes.data || []).map(mapDbToCategory);
+    const subcategories = (subsRes.data || []).map(mapDbToSubcategory);
+
+    // Conjunto de categorias estritamente 'available'
+    const availableCategoryIds = new Set(
+      categories.filter((c) => c.status === "available").map((c) => c.id)
+    );
+
+    // Conjunto de subcategorias estritamente 'available' pertencentes a categoria 'available'
+    const availableSubcategoryIds = new Set(
+      subcategories
+        .filter((s) => s.status === "available" && availableCategoryIds.has(s.categoryId))
         .map((s) => s.id)
     );
 
+    // Filtra aulas pertencentes a categorias e subcategorias 100% disponíveis
     const availableLessons = (lessonsRes.data || []).filter(
-      (l) => activeCatIds.has(l.category_id) && activeSubIds.has(l.subcategory_id)
+      (l) => availableCategoryIds.has(l.category_id) && availableSubcategoryIds.has(l.subcategory_id)
     );
 
     return NextResponse.json(

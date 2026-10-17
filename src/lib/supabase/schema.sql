@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS public.categories (
   banner_url TEXT,
   display_order INT NOT NULL DEFAULT 0,
   published BOOLEAN NOT NULL DEFAULT true,
+  status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'updating', 'hidden')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
@@ -44,6 +45,7 @@ CREATE TABLE IF NOT EXISTS public.subcategories (
   description TEXT,
   display_order INT NOT NULL DEFAULT 0,
   published BOOLEAN NOT NULL DEFAULT true,
+  status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'updating', 'hidden')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
   UNIQUE(category_id, slug)
 );
@@ -158,16 +160,24 @@ GRANT UPDATE (name, avatar_url, phone, completed_lesson_ids, last_lesson_id, cus
   ON public.profiles TO authenticated;
 
 -- Regras de categorias e subcategorias:
--- Todo mundo pode ler categorias publicadas; Admin pode gerenciar tudo.
+-- Todo mundo pode ler categorias em available ou updating; Admin pode gerenciar tudo.
 CREATE POLICY "Leitura pública de categorias publicadas" ON public.categories
-  FOR SELECT USING (published = true OR (SELECT public.current_user_is_admin()));
+  FOR SELECT USING (
+    status IN ('available', 'updating')
+    OR (status IS NULL AND published = true)
+    OR (SELECT public.current_user_is_admin())
+  );
 
 CREATE POLICY "Administradora gerencia categorias" ON public.categories
   FOR ALL USING ((SELECT public.current_user_is_admin()))
   WITH CHECK ((SELECT public.current_user_is_admin()));
 
 CREATE POLICY "Leitura pública de subcategorias publicadas" ON public.subcategories
-  FOR SELECT USING (published = true OR (SELECT public.current_user_is_admin()));
+  FOR SELECT USING (
+    status IN ('available', 'updating')
+    OR (status IS NULL AND published = true)
+    OR (SELECT public.current_user_is_admin())
+  );
 
 CREATE POLICY "Administradora gerencia subcategorias" ON public.subcategories
   FOR ALL USING ((SELECT public.current_user_is_admin()))

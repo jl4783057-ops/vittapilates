@@ -1,23 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSupabaseAdminConfigured, getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isAdminRequest } from "@/lib/access";
-import { Subcategory } from "@/types";
+import { Subcategory, PublicationStatus } from "@/types";
 import { INITIAL_SUBCATEGORIES } from "@/lib/data/initial-data";
+import { getStatusOverride, setStatusOverride, deleteStatusOverride } from "@/lib/data/publication-status-store";
 
 export function mapDbToSubcategory(row: Record<string, unknown>): Subcategory {
+  const rowId = String(row.id);
+  const rawStatus = typeof row.status === "string" ? row.status.trim().toLowerCase() : "";
+  const override = getStatusOverride("subcategories", rowId);
+
+  let status: PublicationStatus = "available";
+  if (rawStatus === "available" || rawStatus === "updating" || rawStatus === "hidden") {
+    status = rawStatus as PublicationStatus;
+  } else if (override) {
+    status = override;
+  } else if (row.published === false) {
+    status = "hidden";
+  } else {
+    status = "available";
+  }
+
   return {
-    id: String(row.id),
+    id: rowId,
     categoryId: String(row.category_id),
     slug: String(row.slug),
     name: String(row.name),
     description: typeof row.description === "string" ? row.description : undefined,
     imageUrl: typeof row.image_url === "string" ? row.image_url : undefined,
     order: Number(row.display_order ?? 0),
-    published: Boolean(row.published ?? true),
+    published: status !== "hidden",
+    status,
   };
 }
 
 export function mapSubcategoryToDb(sub: Subcategory): Record<string, unknown> {
+  const status: PublicationStatus = sub.status || (sub.published === false ? "hidden" : "available");
   return {
     id: sub.id,
     category_id: sub.categoryId,
@@ -26,7 +44,8 @@ export function mapSubcategoryToDb(sub: Subcategory): Record<string, unknown> {
     description: sub.description || null,
     image_url: sub.imageUrl || null,
     display_order: sub.order,
-    published: sub.published,
+    published: status !== "hidden",
+    status,
   };
 }
 
@@ -61,16 +80,29 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: Subcategory = await request.json();
-    const dbPayload = mapSubcategoryToDb(body);
+    const status: PublicationStatus = body.status || (body.published === false ? "hidden" : "available");
+    const dbPayload = mapSubcategoryToDb({ ...body, status });
 
-    const { data, error } = await getSupabaseAdmin()
+    let insertRes = await getSupabaseAdmin()
       .from("subcategories")
       .insert(dbPayload)
       .select("*")
       .single();
 
-    if (error) throw error;
-    return NextResponse.json({ success: true, subcategory: mapDbToSubcategory(data) });
+    if (insertRes.error && insertRes.error.code === "42703") {
+      const { status: _omitted, ...fallbackPayload } = dbPayload;
+      setStatusOverride("subcategories", String(body.id), status);
+      insertRes = await getSupabaseAdmin()
+        .from("subcategories")
+        .insert(fallbackPayload)
+        .select("*")
+        .single();
+    } else if (!insertRes.error) {
+      setStatusOverride("subcategories", String(body.id), status);
+    }
+
+    if (insertRes.error) throw insertRes.error;
+    return NextResponse.json({ success: true, subcategory: mapDbToSubcategory(insertRes.data) });
   } catch (err: unknown) {
     console.error("Erro ao criar subcategoria:", err);
     return NextResponse.json(
@@ -88,25 +120,56 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     if (Array.isArray(body)) {
-      const rows = body.map(mapSubcategoryToDb);
-      const { data, error } = await getSupabaseAdmin()
+      const rows = body.map((sub: Subcategory) => {
+        const s = sub.status || (sub.published === false ? "hidden" : "available");
+        setStatusOverride("subcategories", String(sub.id), s);
+        return mapSubcategoryToDb({ ...sub, status: s });
+      });
+
+      let upsertRes = await getSupabaseAdmin()
         .from("subcategories")
         .upsert(rows)
         .select("*");
-      if (error) throw error;
-      return NextResponse.json({ success: true, subcategories: (data || []).map(mapDbToSubcategory) });
+
+      if (upsertRes.error && upsertRes.error.code === "42703") {
+        const fallbackRows = rows.map((r) => {
+          const { status: _omitted, ...rest } = r;
+          return rest;
+        });
+        upsertRes = await getSupabaseAdmin()
+          .from("subcategories")
+          .upsert(fallbackRows)
+          .select("*");
+      }
+
+      if (upsertRes.error) throw upsertRes.error;
+      return NextResponse.json({ success: true, subcategories: (upsertRes.data || []).map(mapDbToSubcategory) });
     }
 
     const sub: Subcategory = body;
-    const dbPayload = mapSubcategoryToDb(sub);
-    const { data, error } = await getSupabaseAdmin()
+    const status: PublicationStatus = sub.status || (sub.published === false ? "hidden" : "available");
+    const dbPayload = mapSubcategoryToDb({ ...sub, status });
+
+    let upsertRes = await getSupabaseAdmin()
       .from("subcategories")
       .upsert(dbPayload)
       .select("*")
       .single();
 
-    if (error) throw error;
-    return NextResponse.json({ success: true, subcategory: mapDbToSubcategory(data) });
+    if (upsertRes.error && upsertRes.error.code === "42703") {
+      const { status: _omitted, ...fallbackPayload } = dbPayload;
+      setStatusOverride("subcategories", String(sub.id), status);
+      upsertRes = await getSupabaseAdmin()
+        .from("subcategories")
+        .upsert(fallbackPayload)
+        .select("*")
+        .single();
+    } else if (!upsertRes.error) {
+      setStatusOverride("subcategories", String(sub.id), status);
+    }
+
+    if (upsertRes.error) throw upsertRes.error;
+    return NextResponse.json({ success: true, subcategory: mapDbToSubcategory(upsertRes.data) });
   } catch (err: unknown) {
     console.error("Erro ao atualizar subcategoria:", err);
     return NextResponse.json(
@@ -126,6 +189,7 @@ export async function DELETE(request: NextRequest) {
   if (!id) return NextResponse.json({ error: "ID da subcategoria obrigatório." }, { status: 400 });
 
   try {
+    deleteStatusOverride("subcategories", id);
     const { error } = await getSupabaseAdmin().from("subcategories").delete().eq("id", id);
     if (error) throw error;
     return NextResponse.json({ success: true, id });

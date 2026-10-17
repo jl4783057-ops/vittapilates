@@ -17,12 +17,23 @@ const REVOKING_EVENTS = new Set([
 ]);
 
 /**
- * Comparação em tempo constante para mitigar ataques de timing (timing attacks).
+ * Higieniza o segredo removendo espaços, quebras de linha e eventuais aspas
+ * inseridas acidentalmente ao colar variáveis no painel da Vercel ou no .env.
  */
-function safeTimingCompare(received: string, expected: string): boolean {
-  if (typeof received !== "string" || typeof expected !== "string") return false;
-  const a = Buffer.from(received.trim());
-  const b = Buffer.from(expected.trim());
+function sanitizeSecret(val: unknown): string {
+  if (typeof val !== "string") return "";
+  return val.trim().replace(/^["']|["']$/g, "").trim();
+}
+
+/**
+ * Comparação em tempo constante para mitigar ataques de temporização (timing attacks).
+ */
+function safeTimingCompare(received: unknown, expected: unknown): boolean {
+  const cleanReceived = sanitizeSecret(received);
+  const cleanExpected = sanitizeSecret(expected);
+  if (!cleanReceived || !cleanExpected) return false;
+  const a = Buffer.from(cleanReceived);
+  const b = Buffer.from(cleanExpected);
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }
@@ -30,16 +41,15 @@ function safeTimingCompare(received: string, expected: string): boolean {
 interface ValidationResult {
   valid: boolean;
   reason?: string;
-  method?: "hmac_signature" | "body_secret" | "header_token";
+  method?: "body_secret" | "hmac_signature" | "header_token" | "query_secret";
 }
 
 /**
  * Validação rigorosa do webhook da Cakto:
- * 1. Padrão Oficial Cakto: HMAC-SHA256 via cabeçalhos X-Cakto-Signature e X-Cakto-Timestamp
- *    Base assinada: `${timestamp}.${rawBody}`
- *    Tolerância máxima: 300 segundos (5 minutos) contra ataques de repetição (replay attacks).
- * 2. Padrão Alternativo / Simulador de Painel: Chave secreta enviada no corpo JSON (body.secret)
- * 3. Fallback de Cabeçalho Direto: Authorization: Bearer <secret> ou X-Cakto-Secret
+ * 1. Campo 'secret' no corpo JSON: { "secret": "...", "event": "...", "data": { ... } }
+ * 2. Assinatura HMAC-SHA256 nos cabeçalhos (X-Cakto-Signature e X-Cakto-Timestamp)
+ * 3. Cabeçalho de autorização (Bearer token ou X-Cakto-Secret)
+ * 4. Parâmetro de consulta na URL (?secret=...)
  */
 function validateCaktoRequest(
   request: Request,
@@ -47,13 +57,29 @@ function validateCaktoRequest(
   body: Record<string, unknown> | null,
   expectedSecret: string | undefined
 ): ValidationResult {
-  if (!expectedSecret || expectedSecret.trim().length === 0) {
+  const cleanExpected = sanitizeSecret(expectedSecret);
+  if (!cleanExpected) {
     return { valid: false, reason: "missing_env_secret" };
   }
 
-  const cleanSecret = expectedSecret.trim();
+  // 1. Verificação Primária: Campo 'secret' no corpo JSON da Cakto
+  if (body && typeof body === "object") {
+    const bodySecret =
+      (typeof body.secret === "string" ? body.secret : "") ||
+      (typeof body.token === "string" ? body.token : "") ||
+      (body.data && typeof (body.data as Record<string, unknown>).secret === "string"
+        ? ((body.data as Record<string, unknown>).secret as string)
+        : "") ||
+      (body.fields && typeof (body.fields as Record<string, unknown>).secret === "string"
+        ? ((body.fields as Record<string, unknown>).secret as string)
+        : "");
 
-  // 1. Método Oficial: Assinatura HMAC-SHA256 nos cabeçalhos
+    if (bodySecret && safeTimingCompare(bodySecret, cleanExpected)) {
+      return { valid: true, method: "body_secret" };
+    }
+  }
+
+  // 2. Assinatura HMAC-SHA256 nos cabeçalhos (se enviada pela Cakto)
   const signatureHeader =
     request.headers.get("x-cakto-signature") ||
     request.headers.get("x-signature") ||
@@ -67,60 +93,84 @@ function validateCaktoRequest(
     const timestampSec = parseInt(timestampHeader, 10);
     const nowSec = Math.floor(Date.now() / 1000);
 
-    // Janela de tolerância contra replay attack
-    if (isNaN(timestampSec) || Math.abs(nowSec - timestampSec) > 300) {
-      return { valid: false, reason: "timestamp_out_of_window" };
-    }
+    // Janela de tolerância de 5 minutos contra replay attacks
+    if (!isNaN(timestampSec) && Math.abs(nowSec - timestampSec) <= 300) {
+      const cleanReceivedSig = signatureHeader.startsWith("v1=")
+        ? signatureHeader.slice(3).trim()
+        : signatureHeader.trim();
 
-    // Suporta formato "v1=<hash>" ou diretamente o hash hexadecimal
-    const cleanReceivedSig = signatureHeader.startsWith("v1=")
-      ? signatureHeader.slice(3).trim()
-      : signatureHeader.trim();
+      const computedHmac = createHmac("sha256", cleanExpected)
+        .update(`${timestampHeader}.${rawBody}`)
+        .digest("hex");
 
-    const computedHmac = createHmac("sha256", cleanSecret)
-      .update(`${timestampHeader}.${rawBody}`)
-      .digest("hex");
-
-    if (safeTimingCompare(cleanReceivedSig, computedHmac)) {
-      return { valid: true, method: "hmac_signature" };
+      if (safeTimingCompare(cleanReceivedSig, computedHmac)) {
+        return { valid: true, method: "hmac_signature" };
+      }
     }
   }
 
-  // 2. Método Alternativo / Simulador Cakto: Secret no corpo JSON
-  if (body && typeof body === "object") {
-    const bodySecret =
-      (typeof body.secret === "string" ? body.secret : "") ||
-      (body.fields && typeof (body.fields as Record<string, unknown>).secret === "string"
-        ? ((body.fields as Record<string, unknown>).secret as string)
-        : "") ||
-      (body.data && typeof (body.data as Record<string, unknown>).secret === "string"
-        ? ((body.data as Record<string, unknown>).secret as string)
-        : "");
-
-    if (bodySecret && safeTimingCompare(bodySecret, cleanSecret)) {
-      return { valid: true, method: "body_secret" };
-    }
-  }
-
-  // 3. Fallback: Cabeçalho direto de Token/Bearer
+  // 3. Cabeçalhos diretos de token
   const authHeader = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
-  const directSecretHeader =
+  const directHeaderSecret =
     request.headers.get("x-cakto-secret") ||
     request.headers.get("x-webhook-secret") ||
     "";
 
-  if (authHeader && safeTimingCompare(authHeader, cleanSecret)) {
+  if (authHeader && safeTimingCompare(authHeader, cleanExpected)) {
     return { valid: true, method: "header_token" };
   }
-  if (directSecretHeader && safeTimingCompare(directSecretHeader, cleanSecret)) {
+  if (directHeaderSecret && safeTimingCompare(directHeaderSecret, cleanExpected)) {
     return { valid: true, method: "header_token" };
+  }
+
+  // 4. Parâmetro de consulta na URL
+  try {
+    const urlSecret = new URL(request.url).searchParams.get("secret");
+    if (urlSecret && safeTimingCompare(urlSecret, cleanExpected)) {
+      return { valid: true, method: "query_secret" };
+    }
+  } catch {
+    // ignora erro de parse da url
   }
 
   return { valid: false, reason: "invalid_credentials" };
 }
 
+/**
+ * Identifica se a notificação é um evento de teste do painel da Cakto ou fixture de homologação,
+ * permitindo responder com HTTP 200 sem criar contas ou registros fictícios no banco de produção.
+ */
+function isTestNotification(
+  event: string,
+  body: Record<string, unknown>,
+  data: Record<string, unknown>,
+  email: string
+): boolean {
+  if (event === "test" || event === "ping" || event === "webhook_test") return true;
+  if (body.test === true || data.test === true || data.is_test === true) return true;
+  if (data.status === "test" || data.status === "mock") return true;
+
+  const cleanEmail = email.toLowerCase().trim();
+  if (
+    cleanEmail.endsWith("@example.com") ||
+    cleanEmail.endsWith("@test.com") ||
+    cleanEmail === "teste@gmail.com" ||
+    cleanEmail === "teste@cakto.com.br" ||
+    cleanEmail === "test@cakto.com.br"
+  ) {
+    return true;
+  }
+
+  const orderId = String(data.id ?? data.refId ?? "");
+  if (orderId.startsWith("test_") || orderId.startsWith("mock_")) {
+    return true;
+  }
+
+  return false;
+}
+
 export async function POST(request: Request) {
-  // 1. Ler o corpo bruto (raw body) preservando bytes exatos para cálculo HMAC
+  // 1. Ler o corpo bruto da requisição
   let rawBody = "";
   try {
     rawBody = await request.text();
@@ -132,21 +182,46 @@ export async function POST(request: Request) {
   try {
     body = JSON.parse(rawBody);
   } catch {
-    body = null;
+    // Tenta fallback para form-urlencoded caso o simulador envie dados serializados
+    try {
+      const params = new URLSearchParams(rawBody);
+      const parsed: Record<string, unknown> = {};
+      params.forEach((val, key) => {
+        parsed[key] = val;
+      });
+      if (parsed.secret || parsed.event) {
+        body = parsed;
+      }
+    } catch {
+      body = null;
+    }
   }
 
   const expectedSecret = process.env.CAKTO_WEBHOOK_SECRET;
   const validation = validateCaktoRequest(request, rawBody, body, expectedSecret);
 
   if (!validation.valid) {
+    const receivedSecretCandidate =
+      (body && typeof body.secret === "string" ? body.secret : "") ||
+      request.headers.get("x-cakto-secret") ||
+      request.headers.get("x-webhook-secret") ||
+      "";
+
+    const cleanExpected = sanitizeSecret(expectedSecret);
+    const cleanReceived = sanitizeSecret(receivedSecretCandidate);
+
     // Diagnóstico estritamente seguro: não registra tokens, segredos ou assinaturas
     console.warn("[cakto-webhook] Rejeição de autenticação 401:", {
-      hasEnvSecret: Boolean(expectedSecret && expectedSecret.trim().length > 0),
+      hasEnvSecret: cleanExpected.length > 0,
+      envSecretLength: cleanExpected.length,
+      hasReceivedSecret: cleanReceived.length > 0,
+      receivedSecretLength: cleanReceived.length,
+      secretLengthMatches: cleanReceived.length === cleanExpected.length,
       hasHmacHeader: Boolean(request.headers.get("x-cakto-signature")),
       hasTimestampHeader: Boolean(request.headers.get("x-cakto-timestamp")),
-      hasBodySecret: Boolean(body && typeof body === "object" && Boolean(body.secret)),
       reason: validation.reason,
     });
+
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -184,22 +259,18 @@ export async function POST(request: Request) {
     ""
   );
 
-  // Armazena apenas campos necessários para auditoria; nunca persiste credenciais do webhook
-  const storedPayload = {
-    event,
-    orderId,
-    productId:
-      data.product && typeof (data.product as Record<string, unknown>).id !== "undefined"
-        ? String((data.product as Record<string, unknown>).id)
-        : null,
-    status: data.status == null ? null : String(data.status),
-    amount:
-      data.amount ??
-      (data.offer && (data.offer as Record<string, unknown>).price) ??
-      (data.product && (data.product as Record<string, unknown>).price) ??
-      null,
-    validationMethod: validation.method,
-  };
+  // 2. Se for um evento de teste do painel da Cakto, responde 200 OK sem criar registros fictícios
+  if (isTestNotification(event, body, data, email)) {
+    console.log(
+      `[cakto-webhook] Evento de teste '${event}' autenticado com sucesso. Respondendo HTTP 200 sem criar registros fictícios em produção.`
+    );
+    return NextResponse.json({
+      ok: true,
+      test: true,
+      event,
+      message: "Webhook da Cakto testado e autenticado com sucesso pela Vitta Pilates.",
+    });
+  }
 
   const productFilter = process.env.CAKTO_PRODUCT_ID;
   if (
@@ -217,9 +288,26 @@ export async function POST(request: Request) {
     );
   }
 
+  // Armazena campos necessários para auditoria; nunca persiste credenciais do webhook
+  const storedPayload = {
+    event,
+    orderId,
+    productId:
+      data.product && typeof (data.product as Record<string, unknown>).id !== "undefined"
+        ? String((data.product as Record<string, unknown>).id)
+        : null,
+    status: data.status == null ? null : String(data.status),
+    amount:
+      data.amount ??
+      (data.offer && (data.offer as Record<string, unknown>).price) ??
+      (data.product && (data.product as Record<string, unknown>).price) ??
+      null,
+    validationMethod: validation.method,
+  };
+
   const admin = getSupabaseAdmin();
 
-  // Idempotência: Cakto pode reenviar o mesmo evento múltiplas vezes
+  // 3. Idempotência: Cakto pode reenviar o mesmo evento múltiplas vezes
   const { error: dupError } = await admin
     .from("cakto_orders")
     .insert({ id: `${event}:${orderId}`, event, email, payload: storedPayload });
@@ -232,9 +320,8 @@ export async function POST(request: Request) {
   }
 
   try {
+    // 4. Fluxo de Compra Aprovada ou Renovação
     if (event === "purchase_approved" || event === "subscription_renewed") {
-      // Cria a conta no Supabase Auth ou reaproveita conta existente (ex: cortesia convertida)
-      // Dispara o e-mail oficial com o link seguro de criação/definição de senha caso nunca tenha acessado
       const account = await ensureAccountAndSendPasswordLink({
         email,
         name,
@@ -260,7 +347,7 @@ export async function POST(request: Request) {
         .eq("user_id", account.userId)
         .in("status", ["invited", "active", "expired"]);
 
-      // Associar respostas do quiz personalizado, se houver sessão registrada
+      // Vincula submissão do quiz personalizado, se houver sessão registrada
       try {
         const quizSessionId =
           data.sck ||
@@ -339,8 +426,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, created: account.created });
     }
 
+    // 5. Fluxo de Revogação de Acesso: Reembolso, Chargeback ou Cancelamento de Assinatura
     if (REVOKING_EVENTS.has(event)) {
-      // Localiza o usuário correspondente para auditoria e vinculação
       const { data: userProfile } = await admin
         .from("profiles")
         .select("id")
@@ -369,7 +456,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ignored: event });
   } catch (err) {
-    // Em caso de falha de processamento no banco, remove o registro da idempotência para permitir que a Cakto tente novamente
+    // Remove o registro da idempotência em caso de falha transitória para permitir nova entrega pela Cakto
     await admin.from("cakto_orders").delete().eq("id", `${event}:${orderId}`);
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }

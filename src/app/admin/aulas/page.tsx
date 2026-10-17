@@ -21,7 +21,7 @@ import {
 import ImageUploadField from "@/components/ui/ImageUploadField";
 
 export default function AdminLessonsPage() {
-  const { lessons, setLessons, categories, subcategories } = useApp();
+  const { lessons, setLessons, categories, subcategories, exercises } = useApp();
 
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState<string>("todas");
@@ -60,6 +60,7 @@ export default function AdminLessonsPage() {
     description: string;
     categoryId: string;
     subcategoryId: string;
+    exerciseId?: string;
     durationMinutes: number;
     level: LessonLevel;
     format: LessonFormat;
@@ -77,6 +78,7 @@ export default function AdminLessonsPage() {
     description: "",
     categoryId: categories[0]?.id || "cat-1",
     subcategoryId: subcategories[0]?.id || "sub-1-1",
+    exerciseId: undefined,
     durationMinutes: 15,
     level: "iniciante",
     format: "aula rápida",
@@ -113,6 +115,7 @@ export default function AdminLessonsPage() {
       description: "",
       categoryId: firstCat,
       subcategoryId: firstSub,
+      exerciseId: undefined,
       durationMinutes: 15,
       level: "iniciante",
       format: "aula rápida",
@@ -139,6 +142,7 @@ export default function AdminLessonsPage() {
       description: lesson.description,
       categoryId: lesson.categoryId,
       subcategoryId: lesson.subcategoryId,
+      exerciseId: lesson.exerciseId || undefined,
       durationMinutes: lesson.durationMinutes,
       level: lesson.level,
       format: lesson.format,
@@ -244,6 +248,7 @@ export default function AdminLessonsPage() {
       description: formData.description.trim(),
       categoryId: formData.categoryId,
       subcategoryId: formData.subcategoryId || (subcategories.find((s) => s.categoryId === formData.categoryId)?.id || "sub-1-1"),
+      exerciseId: formData.exerciseId || undefined,
       durationMinutes: Number(formData.durationMinutes),
       level: formData.level,
       format: formData.format,
@@ -628,7 +633,7 @@ export default function AdminLessonsPage() {
                   </label>
                   <select
                     value={formData.subcategoryId}
-                    onChange={(e) => setFormData({ ...formData, subcategoryId: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, subcategoryId: e.target.value, exerciseId: undefined })}
                     className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
                   >
                     {availableSubs.length === 0 ? (
@@ -642,6 +647,27 @@ export default function AdminLessonsPage() {
                     )}
                   </select>
                 </div>
+              </div>
+
+              {/* Vínculo de Exercício Opcional */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold uppercase text-[#827B77] block">
+                  Exercício (Opcional)
+                </label>
+                <select
+                  value={formData.exerciseId || ""}
+                  onChange={(e) => setFormData({ ...formData, exerciseId: e.target.value || undefined })}
+                  className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
+                >
+                  <option value="">Nenhum exercício vinculado (aula avulsa no tema)</option>
+                  {exercises
+                    .filter((ex) => ex.subcategoryId === formData.subcategoryId)
+                    .map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {ex.title} (Posição #{ex.order})
+                      </option>
+                    ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-3 gap-3">

@@ -48,10 +48,11 @@ function ProgramsContent() {
   const categoryParam = searchParams.get("categoria");
   const subcategoryParam = searchParams.get("subcategoria");
 
-  const { categories, subcategories, lessons } = useApp();
+  const { categories, subcategories, lessons, exercises = [] } = useApp();
 
   const selectedCategory = categoryParam || null;
   const selectedSubcategory = subcategoryParam || null;
+  const [selectedExerciseId, setSelectedExerciseId] = React.useState<string | null>(null);
 
   // 1. Categorias visíveis no Explorar (Disponível ou Em atualização; Oculta é excluída)
   const visibleCategories = useMemo(
@@ -103,7 +104,63 @@ function ProgramsContent() {
     currentCategoryData
   );
 
-  // Aulas vinculadas estritamente à subcategoria aberta (apenas se AMBAS forem 'available')
+  // Exercícios vinculados estritamente à subcategoria aberta
+  const subcategoryExercises = useMemo(() => {
+    if (!currentSubcategoryData) return [];
+    return (exercises || [])
+      .filter((e) => e.subcategoryId === currentSubcategoryData.id)
+      .sort((a, b) => a.order - b.order);
+  }, [exercises, currentSubcategoryData]);
+
+  // Exercício ativo (prioriza o selecionado ou o primeiro da lista)
+  const activeExerciseId = useMemo(() => {
+    if (selectedExerciseId && subcategoryExercises.some((e) => e.id === selectedExerciseId)) {
+      return selectedExerciseId;
+    }
+    return subcategoryExercises[0]?.id || null;
+  }, [selectedExerciseId, subcategoryExercises]);
+
+  const activeExercise = useMemo(() => {
+    if (!activeExerciseId) return null;
+    return subcategoryExercises.find((e) => e.id === activeExerciseId) || null;
+  }, [activeExerciseId, subcategoryExercises]);
+
+  // Aulas do exercício atualmente ativo
+  const activeExerciseLessons = useMemo(() => {
+    if (!activeExerciseId) return [];
+    return lessons
+      .filter((l) => l.status === "publicado" && l.exerciseId === activeExerciseId)
+      .sort((a, b) => a.order - b.order);
+  }, [lessons, activeExerciseId]);
+
+  // Aulas vinculadas à subcategoria que não possuem exercício atribuído
+  const unassignedSubcategoryLessons = useMemo(() => {
+    if (
+      !currentCategoryData ||
+      !currentSubcategoryData ||
+      categoryStatus !== "available" ||
+      subcategoryEffectiveStatus !== "available"
+    ) {
+      return [];
+    }
+
+    return lessons.filter(
+      (l) =>
+        l.status === "publicado" &&
+        l.categoryId === currentCategoryData.id &&
+        l.subcategoryId === currentSubcategoryData.id &&
+        (!l.exerciseId || !subcategoryExercises.some((e) => e.id === l.exerciseId))
+    );
+  }, [
+    lessons,
+    currentCategoryData,
+    currentSubcategoryData,
+    categoryStatus,
+    subcategoryEffectiveStatus,
+    subcategoryExercises,
+  ]);
+
+  // Aulas vinculadas estritamente à subcategoria aberta (para modo legado sem exercícios)
   const subcategoryLessons = useMemo(() => {
     if (
       !currentCategoryData ||
@@ -290,6 +347,269 @@ function ProgramsContent() {
                   Ver outros temas de {currentCategoryData.name}
                 </button>
               </div>
+            </div>
+          ) : subcategoryExercises.length > 0 ? (
+            <div className="space-y-6">
+              {/* Barra de introdução dos Exercícios */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#EADBCE]/80 pb-3">
+                <div>
+                  <h2 className="font-serif text-lg sm:text-xl font-bold text-[#292321]">
+                    Exercícios Disponíveis
+                  </h2>
+                  <p className="text-xs text-[#827B77]">
+                    Toque em um exercício para acessar a aula ou as aulas correspondentes.
+                  </p>
+                </div>
+                <span className="self-start sm:self-auto text-xs font-semibold px-3 py-1 rounded-full bg-[#FAF7F2] text-[#B77D82] border border-[#EADBCE]">
+                  {subcategoryExercises.length} {subcategoryExercises.length === 1 ? "exercício" : "exercícios"}
+                </span>
+              </div>
+
+              {/* Grade de Quadradinhos / Cards dos Exercícios */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                {subcategoryExercises.map((exercise, index) => {
+                  const isActive = exercise.id === activeExerciseId;
+                  const exLessons = lessons.filter(
+                    (l) => l.status === "publicado" && l.exerciseId === exercise.id
+                  );
+                  const totalDuration = exLessons.reduce(
+                    (acc, l) => acc + (l.durationMinutes || 0),
+                    0
+                  );
+
+                  return (
+                    <button
+                      key={exercise.id}
+                      type="button"
+                      onClick={() => setSelectedExerciseId(exercise.id)}
+                      className={`group relative rounded-[22px] p-3.5 sm:p-4 text-left transition-all flex flex-col justify-between cursor-pointer border ${
+                        isActive
+                          ? "bg-[#FAF7F2] border-[#B77D82] ring-2 ring-[#B77D82]/20 shadow-xs"
+                          : "bg-white border-[#EADBCE] hover:border-[#B77D82]/50 hover:bg-[#FAF7F2]/40 shadow-2xs"
+                      }`}
+                    >
+                      {/* Topo: Ícone de Play e Badge do Número */}
+                      <div className="flex items-center justify-between w-full mb-3">
+                        <div
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                            isActive
+                              ? "bg-[#B77D82] text-white shadow-2xs"
+                              : "bg-[#FAF7F2] text-[#B77D82] border border-[#EADBCE] group-hover:bg-[#B77D82] group-hover:text-white"
+                          }`}
+                        >
+                          <Play className="w-4 h-4 ml-0.5 fill-current" />
+                        </div>
+
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            isActive
+                              ? "bg-[#B77D82]/15 text-[#B77D82]"
+                              : "bg-[#FAF7F2] text-[#827B77] border border-[#EADBCE]"
+                          }`}
+                        >
+                          #{index + 1}
+                        </span>
+                      </div>
+
+                      {/* Nome do Exercício */}
+                      <div className="space-y-1">
+                        <h3
+                          className={`font-serif font-bold text-xs sm:text-sm line-clamp-2 leading-tight transition-colors ${
+                            isActive ? "text-[#B77D82]" : "text-[#292321] group-hover:text-[#B77D82]"
+                          }`}
+                        >
+                          {exercise.title || `Exercício ${index + 1}`}
+                        </h3>
+                        <p className="text-[11px] text-[#827B77]">
+                          {exLessons.length} {exLessons.length === 1 ? "aula" : "aulas"}
+                          {totalDuration > 0 && ` • ${totalDuration}m`}
+                        </p>
+                      </div>
+
+                      {/* Indicador de Seleção Ativa */}
+                      <div className="mt-3 pt-2 border-t border-[#FAF7F2] flex items-center justify-between text-[10px] font-semibold">
+                        <span className={isActive ? "text-[#B77D82]" : "text-[#827B77]"}>
+                          {isActive ? "Selecionado" : "Tocar p/ ver"}
+                        </span>
+                        <ChevronRight
+                          className={`w-3.5 h-3.5 transition-transform ${
+                            isActive ? "text-[#B77D82] translate-x-0.5" : "text-[#827B77]/60"
+                          }`}
+                        />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Detalhe e Aulas do Exercício Ativo */}
+              {activeExercise && (
+                <div className="mt-6 rounded-[24px] bg-white border border-[#EADBCE] p-5 sm:p-7 shadow-xs space-y-5 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#FAF7F2]">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#B77D82] bg-[#FAF7F2] px-2.5 py-0.5 rounded-full border border-[#EADBCE]">
+                          Aulas do {activeExercise.title}
+                        </span>
+                        <span className="text-xs text-[#827B77]">
+                          {activeExerciseLessons.length}{" "}
+                          {activeExerciseLessons.length === 1 ? "prática" : "práticas"}
+                        </span>
+                      </div>
+                      <h3 className="font-serif text-xl sm:text-2xl font-bold text-[#292321]">
+                        {activeExercise.title}
+                      </h3>
+                      {activeExercise.description && (
+                        <p className="text-xs sm:text-sm text-[#827B77] max-w-2xl leading-relaxed">
+                          {activeExercise.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {activeExerciseLessons.length === 0 ? (
+                    <div className="py-8 text-center space-y-2">
+                      <div className="w-11 h-11 rounded-full bg-[#FAF7F2] text-[#B77D82] mx-auto flex items-center justify-center">
+                        <Play className="w-4 h-4 ml-0.5 opacity-60" />
+                      </div>
+                      <p className="font-serif font-bold text-sm text-[#292321]">
+                        Nenhuma aula cadastrada ainda para este exercício.
+                      </p>
+                      <p className="text-xs text-[#827B77]">
+                        O administrador cadastrará as aulas deste exercício em breve.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {activeExerciseLessons.map((lesson) => (
+                        <article
+                          key={lesson.id}
+                          className="rounded-[20px] bg-[#FAF7F2]/40 border border-[#EADBCE] overflow-hidden hover:border-[#B77D82]/60 hover:shadow-xs transition group flex flex-col justify-between"
+                        >
+                          <div className="relative aspect-[16/9] w-full bg-[#F3EAE3] overflow-hidden">
+                            {lesson.thumbnailUrl ? (
+                              <img
+                                src={lesson.thumbnailUrl}
+                                alt={lesson.title}
+                                className="w-full h-full object-cover group-hover:scale-103 transition duration-500"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-[#B77D82]">
+                                <Play className="w-8 h-8 opacity-40 ml-0.5" />
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-black/20" />
+                            <span className="absolute bottom-2.5 right-2.5 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-mono font-medium text-white backdrop-blur-md">
+                              {lesson.durationMinutes} min
+                            </span>
+                          </div>
+
+                          <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                            <div className="space-y-1">
+                              <h4 className="font-serif font-bold text-base text-[#292321] line-clamp-1 group-hover:text-[#B77D82] transition-colors">
+                                {lesson.title}
+                              </h4>
+                              {lesson.description && (
+                                <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
+                                  {lesson.description}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="pt-2 flex items-center justify-between border-t border-[#EADBCE]/60">
+                              <div className="flex items-center gap-2 text-xs text-[#827B77]">
+                                <span className="flex items-center gap-1 font-medium">
+                                  <Clock className="w-3.5 h-3.5 text-[#B77D82]" />
+                                  {lesson.durationMinutes} min
+                                </span>
+                                <span className="capitalize text-[11px] bg-white px-2 py-0.5 rounded-full border border-[#EADBCE]">
+                                  {lesson.level}
+                                </span>
+                              </div>
+
+                              <Link
+                                href={`/aluna/aula/${lesson.id}`}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#B77D82] text-white text-xs font-semibold hover:bg-[#A3676C] transition shadow-2xs"
+                              >
+                                <Play className="w-3 h-3 fill-current ml-0.5" />
+                                <span>Praticar Aula</span>
+                              </Link>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Se houver aulas legadas no tema sem exercício atribuído */}
+              {unassignedSubcategoryLessons.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-[#EADBCE]/80 space-y-4">
+                  <h3 className="font-serif text-base font-bold text-[#292321]">
+                    Outras aulas disponíveis neste tema
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {unassignedSubcategoryLessons.map((lesson) => (
+                      <article
+                        key={lesson.id}
+                        className="rounded-[20px] bg-white border border-[#EADBCE] overflow-hidden hover:border-[#B77D82]/60 hover:shadow-xs transition group flex flex-col justify-between"
+                      >
+                        <div className="relative aspect-[16/9] w-full bg-[#F3EAE3] overflow-hidden">
+                          {lesson.thumbnailUrl ? (
+                            <img
+                              src={lesson.thumbnailUrl}
+                              alt={lesson.title}
+                              className="w-full h-full object-cover group-hover:scale-103 transition duration-500"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[#B77D82]">
+                              <Play className="w-8 h-8 opacity-40 ml-0.5" />
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-black/20" />
+                          <span className="absolute bottom-2.5 right-2.5 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-mono font-medium text-white backdrop-blur-md">
+                            {lesson.durationMinutes} min
+                          </span>
+                        </div>
+
+                        <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                          <div className="space-y-1">
+                            <h4 className="font-serif font-bold text-base text-[#292321] line-clamp-1 group-hover:text-[#B77D82] transition-colors">
+                              {lesson.title}
+                            </h4>
+                            {lesson.description && (
+                              <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
+                                {lesson.description}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="pt-2 flex items-center justify-between border-t border-[#EADBCE]/60">
+                            <div className="flex items-center gap-2 text-xs text-[#827B77]">
+                              <span className="flex items-center gap-1 font-medium">
+                                <Clock className="w-3.5 h-3.5 text-[#B77D82]" />
+                                {lesson.durationMinutes} min
+                              </span>
+                              <span className="capitalize text-[11px] bg-[#FAF7F2] px-2 py-0.5 rounded-full border border-[#EADBCE]">
+                                {lesson.level}
+                              </span>
+                            </div>
+
+                            <Link
+                              href={`/aluna/aula/${lesson.id}`}
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#B77D82] hover:underline"
+                            >
+                              <span>Praticar Aula</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </Link>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : subcategoryLessons.length === 0 ? (
             <div className="bg-white rounded-[26px] border border-[#EADBCE] p-8 sm:p-10 text-center space-y-2.5 shadow-2xs">

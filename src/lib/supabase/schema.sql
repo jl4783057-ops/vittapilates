@@ -47,16 +47,33 @@ CREATE TABLE IF NOT EXISTS public.subcategories (
   published BOOLEAN NOT NULL DEFAULT true,
   status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'updating', 'hidden')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-  UNIQUE(category_id, slug)
+  UNIQUE(category_id, slug),
+  UNIQUE(id, category_id)
 );
 
--- 4. TABELA DE AULAS
+-- 4. TABELA DE EXERCÍCIOS
+CREATE TABLE IF NOT EXISTS public.exercises (
+  id TEXT PRIMARY KEY,
+  category_id TEXT NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  subcategory_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  display_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT fk_exercises_subcategory_category
+    FOREIGN KEY (subcategory_id, category_id)
+    REFERENCES public.subcategories (id, category_id)
+    ON DELETE CASCADE
+);
+
+-- 5. TABELA DE AULAS
 CREATE TABLE IF NOT EXISTS public.lessons (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   description TEXT NOT NULL,
   category_id TEXT NOT NULL REFERENCES public.categories(id) ON DELETE RESTRICT,
   subcategory_id TEXT NOT NULL REFERENCES public.subcategories(id) ON DELETE RESTRICT,
+  exercise_id TEXT REFERENCES public.exercises(id) ON DELETE SET NULL,
   duration_minutes INT NOT NULL,
   level TEXT NOT NULL CHECK (level IN ('iniciante', 'intermediário', 'avançado')),
   format TEXT NOT NULL CHECK (format IN ('aula rápida', 'aula completa', 'sequência guiada', 'programa por dias')),
@@ -182,6 +199,39 @@ CREATE POLICY "Leitura pública de subcategorias publicadas" ON public.subcatego
 CREATE POLICY "Administradora gerencia subcategorias" ON public.subcategories
   FOR ALL USING ((SELECT public.current_user_is_admin()))
   WITH CHECK ((SELECT public.current_user_is_admin()));
+
+-- Regras de exercícios:
+-- Leitura permitida para alunas se a categoria e a subcategoria estiverem ativas (não 'hidden').
+-- Escrita, edição, exclusão e reordenação exclusivamente para administradoras.
+ALTER TABLE public.exercises ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Leitura pública de exercícios visíveis" ON public.exercises
+  FOR SELECT USING (
+    (
+      EXISTS (
+        SELECT 1
+        FROM public.subcategories s
+        JOIN public.categories c ON c.id = s.category_id
+        WHERE s.id = exercises.subcategory_id
+          AND s.category_id = exercises.category_id
+          AND (s.status IN ('available', 'updating') OR (s.status IS NULL AND s.published = true))
+          AND (c.status IN ('available', 'updating') OR (c.status IS NULL AND c.published = true))
+      )
+    )
+    OR (SELECT public.current_user_is_admin())
+  );
+
+CREATE POLICY "Administradora gerencia exercicios" ON public.exercises
+  FOR ALL TO authenticated
+  USING ((SELECT public.current_user_is_admin()))
+  WITH CHECK ((SELECT public.current_user_is_admin()));
+
+REVOKE ALL ON public.exercises FROM PUBLIC;
+REVOKE ALL ON public.exercises FROM anon;
+REVOKE ALL ON public.exercises FROM authenticated;
+GRANT SELECT ON public.exercises TO anon;
+GRANT SELECT ON public.exercises TO authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.exercises TO authenticated;
 
 -- Regras de aulas:
 -- Alunas com acesso válido (assinante ativa/trial ou cortesia no prazo) podem ler aulas publicadas.

@@ -20,6 +20,7 @@ import {
   X,
   LogOut,
   ExternalLink,
+  Layers,
 } from "lucide-react";
 
 interface NavContentProps {
@@ -149,6 +150,7 @@ export function AdminSidebar() {
     { label: "Cortesias (Influenciadoras)", href: "/admin/cortesias", icon: Gift },
     { label: "Categorias", href: "/admin/categorias", icon: FolderTree },
     { label: "Subcategorias", href: "/admin/subcategorias", icon: ListTree },
+    { label: "Exercícios e Aulas", href: "/admin/exercicios", icon: Layers },
     { label: "Aulas e Vídeos", href: "/admin/aulas", icon: Video },
     { label: "Personalização do Site", href: "/admin/personalizacao", icon: Palette },
     { label: "Quiz Personalizado", href: "/admin/quiz", icon: HelpCircle },

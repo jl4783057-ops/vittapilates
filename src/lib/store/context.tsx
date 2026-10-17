@@ -5,6 +5,7 @@ import {
   User,
   Category,
   Subcategory,
+  Exercise,
   Lesson,
   QuizQuestion,
   SiteSettings,
@@ -30,6 +31,8 @@ interface AppContextType {
   setCategories: React.Dispatch<React.SetStateAction<Category[]>>;
   subcategories: Subcategory[];
   setSubcategories: React.Dispatch<React.SetStateAction<Subcategory[]>>;
+  exercises: Exercise[];
+  setExercises: React.Dispatch<React.SetStateAction<Exercise[]>>;
   lessons: Lesson[];
   setLessons: React.Dispatch<React.SetStateAction<Lesson[]>>;
   quizQuestions: QuizQuestion[];
@@ -51,6 +54,9 @@ interface AppContextType {
   addSubcategory: (subcategory: Subcategory) => void;
   updateSubcategory: (subcategoryId: string, subcategory: Partial<Subcategory>) => void;
   deleteSubcategory: (subcategoryId: string) => void;
+  addExercise: (exercise: Exercise) => void;
+  updateExercise: (exerciseId: string, exercise: Partial<Exercise>) => void;
+  deleteExercise: (exerciseId: string) => void;
   updateQuizQuestion: (questionId: string, question: Partial<QuizQuestion>) => void;
   addQuizQuestion: (question: QuizQuestion) => void;
   deleteQuizQuestion: (questionId: string) => void;
@@ -86,6 +92,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     return INITIAL_SUBCATEGORIES;
   });
+
+  const [exercises, setExercises] = useState<Exercise[]>([]);
 
   const [lessons, setLessons] = useState<Lesson[]>(() => {
     if (typeof window !== "undefined") {
@@ -177,6 +185,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (data.siteSettings) setSiteSettings(data.siteSettings);
           if (Array.isArray(data.categories) && data.categories.length > 0) setCategories(data.categories);
           if (Array.isArray(data.subcategories) && data.subcategories.length > 0) setSubcategories(data.subcategories);
+          if (Array.isArray(data.exercises)) setExercises(data.exercises);
           if (Array.isArray(data.lessons) && data.lessons.length > 0) setLessons(data.lessons);
         }
       } catch (err) {
@@ -524,6 +533,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).catch(() => {});
   };
 
+  const addExercise = (exercise: Exercise) => {
+    setExercises((prev) => [...prev, exercise]);
+    fetch("/api/admin/exercises", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(exercise),
+    }).catch(() => {});
+  };
+
+  const updateExercise = (exerciseId: string, fields: Partial<Exercise>) => {
+    setExercises((prev) => {
+      const updated = prev.map((ex) => (ex.id === exerciseId ? { ...ex, ...fields } : ex));
+      const target = updated.find((ex) => ex.id === exerciseId);
+      if (target) {
+        fetch("/api/admin/exercises", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(target),
+        }).catch(() => {});
+      }
+      return updated;
+    });
+  };
+
+  const deleteExercise = (exerciseId: string) => {
+    setExercises((prev) => prev.filter((ex) => ex.id !== exerciseId));
+    fetch(`/api/admin/exercises?id=${encodeURIComponent(exerciseId)}`, {
+      method: "DELETE",
+    }).catch(() => {});
+  };
+
   const updateQuizQuestion = (questionId: string, fields: Partial<QuizQuestion>) => {
     setQuizQuestions((prev) =>
       prev.map((q) => (q.id === questionId ? { ...q, ...fields } : q))
@@ -542,6 +582,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSiteSettings(INITIAL_SETTINGS);
     setCategories(INITIAL_CATEGORIES);
     setSubcategories(INITIAL_SUBCATEGORIES);
+    setExercises([]);
     setLessons(INITIAL_LESSONS);
     setQuizQuestions(INITIAL_QUIZ_QUESTIONS);
     setUsers(INITIAL_USERS);
@@ -564,6 +605,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setCategories,
         subcategories,
         setSubcategories,
+        exercises,
+        setExercises,
         lessons,
         setLessons,
         quizQuestions,
@@ -584,6 +627,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addSubcategory,
         updateSubcategory,
         deleteSubcategory,
+        addExercise,
+        updateExercise,
+        deleteExercise,
         updateQuizQuestion,
         addQuizQuestion,
         deleteQuizQuestion,

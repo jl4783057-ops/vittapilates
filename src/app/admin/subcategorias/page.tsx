@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useApp } from "@/lib/store/context";
 import { Subcategory, PublicationStatus } from "@/types";
 import { ImageUploadField } from "@/components/ui/ImageUploadField";
@@ -18,6 +19,7 @@ import {
   AlertCircle,
   RefreshCw,
   CheckCircle2,
+  Layers,
 } from "lucide-react";
 
 // Error Boundary para evitar tela branca em qualquer falha de renderização
@@ -480,6 +482,14 @@ function AdminSubcategoriesContent() {
                       </td>
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          <Link
+                            href={`/admin/exercicios?categoria=${encodeURIComponent(parentCat?.slug || sub.categoryId)}&subcategoria=${encodeURIComponent(sub.slug || sub.id)}`}
+                            className="px-2.5 py-1.5 rounded-lg border border-[#EADBCE] text-[#B77D82] hover:bg-[#F7EEEE] transition text-[11px] font-semibold flex items-center gap-1"
+                            title="Gerenciar Exercícios desta Subcategoria"
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Exercícios</span>
+                          </Link>
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(sub)}

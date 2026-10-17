@@ -46,6 +46,16 @@ export interface Subcategory {
   status: PublicationStatus;
 }
 
+export interface Exercise {
+  id: string;
+  categoryId: string;
+  subcategoryId: string;
+  title: string;
+  description?: string;
+  order: number;
+  createdAt?: string;
+}
+
 export type LessonLevel = 'iniciante' | 'intermediário' | 'avançado';
 export type LessonFormat = 'aula rápida' | 'aula completa' | 'sequência guiada' | 'programa por dias';
 export type LessonEquipment = 'sem equipamento' | 'com acessórios';
@@ -57,6 +67,7 @@ export interface Lesson {
   description: string;
   categoryId: string;
   subcategoryId: string;
+  exerciseId?: string;
   durationMinutes: number;
   level: LessonLevel;
   format: LessonFormat;

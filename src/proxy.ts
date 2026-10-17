@@ -8,6 +8,10 @@ export async function proxy(request: NextRequest) {
 
   // Obter domínio público configurado para o Cloudflare R2 (se houver)
   const r2PublicDomain = (process.env.CLOUDFLARE_R2_PUBLIC_DOMAIN || process.env.R2_PUBLIC_DOMAIN || "").trim().replace(/\/$/, "");
+  const configuredR2AccountId = (process.env.CLOUDFLARE_R2_ACCOUNT_ID || process.env.R2_ACCOUNT_ID || "").trim();
+  const r2UploadOrigin = /^[a-f0-9]{32}$/i.test(configuredR2AccountId)
+    ? `https://${configuredR2AccountId}.r2.cloudflarestorage.com`
+    : null;
 
   // Lista de fontes permitidas estritamente para imagens e vídeos do projeto
   const allowedImageSources = [
@@ -39,7 +43,7 @@ export async function proxy(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     `img-src ${allowedImageSources}`,
     "font-src 'self' data:",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+    `connect-src 'self' https://*.supabase.co wss://*.supabase.co${r2UploadOrigin ? ` ${r2UploadOrigin}` : ""}`,
     `media-src ${allowedMediaSources}`,
     "frame-src 'self'",
     "object-src 'none'",

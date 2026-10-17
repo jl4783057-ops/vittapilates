@@ -252,17 +252,49 @@ export async function POST(request: Request) {
     String(customer.name ?? data.name ?? "").trim() ||
     (email ? email.split("@")[0] : "Aluna");
 
-  const orderId = String(
-    data.id ??
-    data.refId ??
-    (data.subscription && (data.subscription as Record<string, unknown>).id) ??
-    ""
-  );
+  // Identificadores estáveis: correlação de pedido e assinatura independente do ID do evento
+  const stableSubscriptionId =
+    (data.subscription && typeof (data.subscription as Record<string, unknown>).id === "string"
+      ? String((data.subscription as Record<string, unknown>).id).trim()
+      : "") ||
+    (typeof data.subscription_id === "string" ? data.subscription_id.trim() : "") ||
+    "";
+
+  const stableOrderId =
+    (typeof data.refId === "string" && data.refId ? data.refId.trim() : "") ||
+    (typeof data.order_id === "string" && data.order_id ? data.order_id.trim() : "") ||
+    (typeof data.orderId === "string" && data.orderId ? data.orderId.trim() : "") ||
+    (typeof data.code === "string" && data.code ? data.code.trim() : "") ||
+    String(data.id ?? "").trim();
+
+  const correlationKey = stableSubscriptionId || stableOrderId;
+  const orderId = String(data.id ?? correlationKey);
+
+  // Determina a data/hora exata do evento (cabeçalho ou payload com fallback para now)
+  let eventTimestamp = new Date();
+  const headerTs = request.headers.get("x-cakto-timestamp");
+  if (headerTs) {
+    const sec = parseInt(headerTs, 10);
+    if (!isNaN(sec) && sec > 1600000000) {
+      eventTimestamp = new Date(sec * 1000);
+    }
+  } else {
+    const rawDate =
+      data.created_at ||
+      data.updated_at ||
+      data.date ||
+      (body && (body.created_at || body.timestamp));
+    if (typeof rawDate === "string" || typeof rawDate === "number") {
+      const parsed = new Date(rawDate);
+      if (!isNaN(parsed.getTime())) eventTimestamp = parsed;
+    }
+  }
 
   // 2. Se for um evento de teste do painel da Cakto, responde 200 OK sem criar registros fictícios
-  if (isTestNotification(event, body, data, email)) {
+  const isTest = isTestNotification(event, body, data, email);
+  if (isTest && (event === "test" || event === "ping" || event === "webhook_test")) {
     console.log(
-      `[cakto-webhook] Evento de teste '${event}' autenticado com sucesso. Respondendo HTTP 200 sem criar registros fictícios em produção.`
+      `[cakto-webhook] Evento ping/teste '${event}' autenticado com sucesso. Respondendo HTTP 200 sem criar registros fictícios em produção.`
     );
     return NextResponse.json({
       ok: true,
@@ -288,21 +320,63 @@ export async function POST(request: Request) {
     );
   }
 
-  // Armazena campos necessários para auditoria; nunca persiste credenciais do webhook
-  const storedPayload = {
+  // Mapeamento rigoroso do estado financeiro do pedido (evita status 'paid' em refunds/chargebacks/refused)
+  let financialStatus: "paid" | "refused" | "refunded" | "chargeback" | "canceled" | "pending";
+  switch (event) {
+    case "purchase_approved":
+    case "subscription_renewed":
+      financialStatus = "paid";
+      break;
+    case "refund":
+    case "refund_requested":
+      financialStatus = "refunded";
+      break;
+    case "chargeback":
+      financialStatus = "chargeback";
+      break;
+    case "subscription_canceled":
+      financialStatus = "canceled";
+      break;
+    case "purchase_refused":
+      financialStatus = "refused";
+      break;
+    default:
+      financialStatus = "pending";
+  }
+
+  // Extração e normalização do valor monetário da transação
+  let parsedAmount: number | null = null;
+  const rawAmt =
+    data.amount ??
+    (data.offer && (data.offer as Record<string, unknown>).price) ??
+    (data.product && (data.product as Record<string, unknown>).price) ??
+    null;
+  if (typeof rawAmt === "number" && !isNaN(rawAmt)) {
+    parsedAmount = rawAmt;
+  } else if (typeof rawAmt === "string") {
+    const cleanNum = parseFloat(rawAmt.replace(/[^\d.,]/g, "").replace(",", "."));
+    if (!isNaN(cleanNum)) parsedAmount = cleanNum;
+  }
+
+  // Armazena campos necessários para auditoria financeira e precedência
+  const storedPayload: Record<string, unknown> = {
     event,
     orderId,
+    subscriptionId: stableSubscriptionId || null,
+    referenceId: stableOrderId || null,
+    correlationKey,
     productId:
       data.product && typeof (data.product as Record<string, unknown>).id !== "undefined"
         ? String((data.product as Record<string, unknown>).id)
         : null,
-    status: data.status == null ? null : String(data.status),
-    amount:
-      data.amount ??
-      (data.offer && (data.offer as Record<string, unknown>).price) ??
-      (data.product && (data.product as Record<string, unknown>).price) ??
-      null,
+    financialStatus,
+    amount: parsedAmount,
+    originalAmount: parsedAmount,
+    refundAmount: financialStatus === "refunded" || financialStatus === "chargeback" ? parsedAmount : null,
+    eventTimestamp: eventTimestamp.toISOString(),
+    rawGatewayStatus: data.status == null ? null : String(data.status),
     validationMethod: validation.method,
+    isTest,
   };
 
   const admin = getSupabaseAdmin();
@@ -313,20 +387,74 @@ export async function POST(request: Request) {
     .insert({ id: `${event}:${orderId}`, event, email, payload: storedPayload });
 
   if (dupError?.code === "23505") {
-    return NextResponse.json({ duplicate: true });
+    return NextResponse.json({ duplicate: true, event, orderId });
   }
   if (dupError) {
     return NextResponse.json({ error: dupError.message }, { status: 500 });
   }
 
   try {
-    // 4. Fluxo de Compra Aprovada ou Renovação
+    // 4. Fluxo de Compra Aprovada ou Renovação de Assinatura
     if (event === "purchase_approved" || event === "subscription_renewed") {
       const account = await ensureAccountAndSendPasswordLink({
         email,
         name,
         redirectTo: `${siteUrl(request)}/definir-senha`,
       });
+
+      // Atualiza o registro do pedido com status operacional do envio do e-mail
+      storedPayload.emailDelivery = {
+        status: account.emailDeliveryStatus,
+        error: account.emailError,
+        setupLinkGenerated: Boolean(account.setupLink),
+      };
+      await admin
+        .from("cakto_orders")
+        .update({
+          user_id: account.userId,
+          payload: storedPayload,
+        })
+        .eq("id", `${event}:${orderId}`);
+
+      // Guarda contra concorrência e inversão de ordem:
+      // Verifica se já existe evento revogador mais recente ou para este mesmo pedido/assinatura
+      const { data: revokingOrders } = await admin
+        .from("cakto_orders")
+        .select("id, event, received_at, payload")
+        .eq("email", email)
+        .in("event", ["refund", "refund_requested", "chargeback", "subscription_canceled"]);
+
+      const hasNewerRevocation = (revokingOrders || []).some((ro) => {
+        const p = (ro.payload as Record<string, unknown>) || {};
+        const roTimestampStr = p.eventTimestamp;
+        const roDate = roTimestampStr ? new Date(String(roTimestampStr)) : new Date(ro.received_at);
+        if (roDate.getTime() >= eventTimestamp.getTime()) return true;
+        if (p.correlationKey && correlationKey && p.correlationKey === correlationKey) return true;
+        return false;
+      });
+
+      if (hasNewerRevocation) {
+        console.warn(
+          `[cakto-webhook] Precedência aplicada: Evento de aprovação '${event}' não ativará acesso de ${email} pois existe cancelamento/reembolso registrado.`
+        );
+
+        await admin
+          .from("profiles")
+          .update({
+            access_type: "none",
+            subscription_status: "canceled",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", account.userId);
+
+        return NextResponse.json({
+          ok: true,
+          active: false,
+          precedence: "revoked_by_newer_event",
+          created: account.created,
+          emailDeliveryStatus: account.emailDeliveryStatus,
+        });
+      }
 
       // Ativa o status de assinante
       await admin
@@ -418,12 +546,12 @@ export async function POST(request: Request) {
         console.warn("[cakto-webhook] Aviso ao associar dados do quiz à compra aprovada:", quizErr);
       }
 
-      await admin
-        .from("cakto_orders")
-        .update({ user_id: account.userId })
-        .eq("id", `${event}:${orderId}`);
-
-      return NextResponse.json({ ok: true, created: account.created });
+      return NextResponse.json({
+        ok: true,
+        active: true,
+        created: account.created,
+        emailDeliveryStatus: account.emailDeliveryStatus,
+      });
     }
 
     // 5. Fluxo de Revogação de Acesso: Reembolso, Chargeback ou Cancelamento de Assinatura
@@ -439,19 +567,37 @@ export async function POST(request: Request) {
           .from("cakto_orders")
           .update({ user_id: userProfile.id })
           .eq("id", `${event}:${orderId}`);
-      }
 
-      // Revoga o acesso no perfil da aluna
-      await admin
-        .from("profiles")
-        .update({
+        // Revoga o acesso no perfil da aluna
+        await admin
+          .from("profiles")
+          .update({
+            access_type: "none",
+            subscription_status: "canceled",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", userProfile.id);
+      } else {
+        // Se o perfil ainda não existe (ex: eventos concorrentes), cria/garante com acesso revogado
+        const { data: listData } = await admin.auth.admin.listUsers({ page: 1, perPage: 100 });
+        const match = listData?.users?.find((u) => u.email && normalizeEmail(u.email) === email);
+
+        await admin.from("profiles").upsert({
+          id: match?.id || undefined,
+          email,
+          name,
           access_type: "none",
           subscription_status: "canceled",
           updated_at: new Date().toISOString(),
-        })
-        .eq("email", email);
+        });
+      }
 
       return NextResponse.json({ ok: true, revoked: true });
+    }
+
+    // 6. Evento Recusado (purchase_refused)
+    if (event === "purchase_refused") {
+      return NextResponse.json({ ok: true, status: "refused", ignored: "purchase_refused" });
     }
 
     return NextResponse.json({ ignored: event });

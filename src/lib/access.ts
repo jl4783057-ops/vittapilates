@@ -122,6 +122,20 @@ export async function ensureAccountAndSendPasswordLink(opts: {
           access_type: "none",
         });
 
+        let setupLink: string | null = null;
+        try {
+          const { data: linkData } = await admin.auth.admin.generateLink({
+            type: "recovery",
+            email,
+            options: { redirectTo: opts.redirectTo },
+          });
+          if (linkData?.properties?.action_link) {
+            setupLink = linkData.properties.action_link;
+          }
+        } catch (linkErr) {
+          console.warn("[access] Aviso não impeditivo: falha ao pré-gerar link seguro de senha:", linkErr);
+        }
+
         try {
           await getSupabaseAnonServer().auth.resetPasswordForEmail(email, {
             redirectTo: opts.redirectTo,
@@ -130,7 +144,14 @@ export async function ensureAccountAndSendPasswordLink(opts: {
           console.warn("[access] Aviso não impeditivo: falha no envio do e-mail de definição de senha:", mailErr);
         }
 
-        return { userId: authUserId, created: true, emailSent: false };
+        return {
+          userId: authUserId,
+          created: true,
+          emailSent: false,
+          emailDeliveryStatus: "failed" as const,
+          emailError: error.message,
+          setupLink,
+        };
       }
 
       throw new Error(`Falha ao criar conta de autenticação: ${error.message}`);
@@ -145,7 +166,14 @@ export async function ensureAccountAndSendPasswordLink(opts: {
         access_type: "none",
       });
 
-      return { userId: data.user.id, created: true, emailSent: true };
+      return {
+        userId: data.user.id,
+        created: true,
+        emailSent: true,
+        emailDeliveryStatus: "sent" as const,
+        emailError: null,
+        setupLink: null,
+      };
     }
   }
 
@@ -158,17 +186,72 @@ export async function ensureAccountAndSendPasswordLink(opts: {
       const { error } = await getSupabaseAnonServer().auth.resetPasswordForEmail(email, {
         redirectTo: opts.redirectTo,
       });
+
+      let setupLink: string | null = null;
+      try {
+        const { data: linkData } = await admin.auth.admin.generateLink({
+          type: "recovery",
+          email,
+          options: { redirectTo: opts.redirectTo },
+        });
+        if (linkData?.properties?.action_link) {
+          setupLink = linkData.properties.action_link;
+        }
+      } catch (linkErr) {
+        console.warn("[access] Aviso não impeditivo: falha ao pré-gerar link seguro para usuário existente:", linkErr);
+      }
+
       if (error) {
         console.warn(`[access] Aviso não impeditivo ao enviar link de senha para ${email}: ${error.message}`);
-        return { userId: authUserId, created: false, emailSent: false };
+        return {
+          userId: authUserId,
+          created: false,
+          emailSent: false,
+          emailDeliveryStatus: "failed" as const,
+          emailError: error.message,
+          setupLink,
+        };
       }
-      return { userId: authUserId, created: false, emailSent: true };
+      return {
+        userId: authUserId,
+        created: false,
+        emailSent: true,
+        emailDeliveryStatus: "sent" as const,
+        emailError: null,
+        setupLink,
+      };
     }
 
-    return { userId: authUserId, created: false, emailSent: false };
+    return {
+      userId: authUserId,
+      created: false,
+      emailSent: false,
+      emailDeliveryStatus: "skipped" as const,
+      emailError: null,
+      setupLink: null,
+    };
   }
 
   throw new Error("Não foi possível identificar ou criar o usuário de autenticação.");
+}
+
+/**
+ * Gera sob demanda um link seguro de definição de senha/primeiro acesso sem expor dados sensíveis em logs.
+ */
+export async function generateStudentPasswordLink(email: string, redirectTo: string): Promise<string> {
+  const admin = getSupabaseAdmin();
+  const cleanEmail = normalizeEmail(email);
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: "recovery",
+    email: cleanEmail,
+    options: { redirectTo },
+  });
+
+  if (error || !data?.properties?.action_link) {
+    throw new Error(error?.message || "Não foi possível gerar o link de acesso no Supabase Auth.");
+  }
+
+  return data.properties.action_link;
 }
 
 /** Closes expired courtesies and removes access from profiles that only had courtesy. */

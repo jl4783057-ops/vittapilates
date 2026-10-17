@@ -12,6 +12,7 @@ import {
   Sparkles,
   ShieldCheck,
   Gift,
+  KeyRound,
 } from "lucide-react";
 import ImageUploadField from "@/components/ui/ImageUploadField";
 
@@ -24,6 +25,8 @@ export default function AdminStudentsPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [generatingLink, setGeneratingLink] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const fetchStudents = useCallback(async () => {
     setLoading(true);
@@ -85,6 +88,34 @@ export default function AdminStudentsPage() {
       setTimeout(() => setToastMessage(null), 4000);
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleGeneratePasswordLink = async (email: string) => {
+    setGeneratingLink(true);
+    try {
+      const res = await fetch("/api/admin/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate_password_link", email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao gerar link de acesso.");
+      if (data.link) {
+        await navigator.clipboard.writeText(data.link);
+        setCopiedLink(true);
+        setToastMessage({ type: "success", text: "Link de acesso gerado e copiado para a área de transferência!" });
+        setTimeout(() => {
+          setCopiedLink(false);
+          setToastMessage(null);
+        }, 4000);
+      }
+    } catch (err) {
+      console.error("Erro ao gerar link:", err);
+      setToastMessage({ type: "error", text: err instanceof Error ? err.message : "Erro ao gerar link." });
+      setTimeout(() => setToastMessage(null), 4000);
+    } finally {
+      setGeneratingLink(false);
     }
   };
 
@@ -379,6 +410,29 @@ export default function AdminStudentsPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Ação de Segurança: Gerar Link de Primeiro Acesso */}
+            <div className="pt-2 border-t border-[#EADBCE] space-y-2">
+              <label className="text-[11px] font-bold uppercase text-[#827B77] block">
+                Definição de Senha e Primeiro Acesso:
+              </label>
+              <button
+                type="button"
+                disabled={generatingLink}
+                onClick={() => handleGeneratePasswordLink(selectedUser.email)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-[#B77D82] text-[#B77D82] bg-[#FAF7F2] hover:bg-[#F7EEEE] text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                {generatingLink
+                  ? "Gerando link seguro..."
+                  : copiedLink
+                  ? "✓ Link Seguro Copiado!"
+                  : "Gerar e Copiar Link de Primeiro Acesso"}
+              </button>
+              <p className="text-[10px] text-[#827B77] leading-relaxed">
+                Gera um link seguro para a aluna definir a senha diretamente, útil caso o e-mail não tenha sido entregue.
+              </p>
             </div>
 
             <button

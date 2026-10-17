@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSupabaseAdminConfigured, getSupabaseAdmin } from "@/lib/supabase/admin";
-import { isAdminRequest } from "@/lib/access";
+import { isAdminRequest, generateStudentPasswordLink, siteUrl } from "@/lib/access";
 import { User, SubscriptionStatus, SubscriptionPlan } from "@/types";
 
 export function mapDbProfileToUser(row: Record<string, unknown>): User {
@@ -100,6 +100,39 @@ export async function PATCH(request: NextRequest) {
     console.error("Erro ao atualizar aluna no Supabase:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Erro ao atualizar aluna no banco." },
+      { status: 500 }
+    );
+  }
+}
+
+// POST: Operações administrativas especiais (geração sob demanda de link de primeiro acesso/senha)
+export async function POST(request: NextRequest) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+  }
+
+  if (!isSupabaseAdminConfigured) {
+    return NextResponse.json({ error: "Supabase não configurado." }, { status: 503 });
+  }
+
+  try {
+    const body = await request.json();
+    const { action, email } = body;
+
+    if (action === "generate_password_link") {
+      if (!email) {
+        return NextResponse.json({ error: "E-mail da aluna obrigatório." }, { status: 400 });
+      }
+      const redirectTo = `${siteUrl(request)}/definir-senha`;
+      const link = await generateStudentPasswordLink(email, redirectTo);
+      return NextResponse.json({ success: true, link });
+    }
+
+    return NextResponse.json({ error: "Ação não reconhecida." }, { status: 400 });
+  } catch (err: unknown) {
+    console.error("Erro na rota POST de alunas:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Erro ao processar ação administrativa." },
       { status: 500 }
     );
   }

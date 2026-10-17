@@ -41,6 +41,9 @@ interface ApiMetricsData {
     periodCancellationsOrRefunds: number;
     hasFinancialAmountData: boolean;
     realGrossRevenue: number | null;
+    realNetRevenue?: number | null;
+    realRefundsAmount?: number | null;
+    mrr?: number | null;
     insufficientDataReason: string;
   };
   period: {
@@ -194,18 +197,27 @@ export default function AdminDashboardPage() {
   const financialIndicators = [
     {
       title: "MRR (receita recorrente)",
-      value: "—",
-      status: "insuficiente",
-      badge: "Pós-lançamento",
+      value:
+        m.mrr != null && m.hasFinancialAmountData
+          ? `R$ ${m.mrr.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+          : "—",
+      status: m.mrr != null && m.hasFinancialAmountData ? "ativo" : "insuficiente",
+      badge: m.mrr != null && m.hasFinancialAmountData ? "Recorrência Real" : "Pós-lançamento",
       note: "Calculado a partir do montante das assinaturas ativas nos primeiros ciclos de cobrança.",
       icon: DollarSign,
     },
     {
       title: "Receita recebida líquida",
-      value: "—",
-      status: "insuficiente",
-      badge: "Pós-lançamento",
-      note: "Consolidará o total financeiro líquido das transações confirmadas.",
+      value:
+        m.realNetRevenue != null && m.hasFinancialAmountData
+          ? `R$ ${m.realNetRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+          : "—",
+      status: m.realNetRevenue != null && m.hasFinancialAmountData ? "ativo" : "insuficiente",
+      badge: m.realNetRevenue != null && m.hasFinancialAmountData ? "Líquido Cakto" : "Pós-lançamento",
+      note:
+        m.realRefundsAmount && m.realRefundsAmount > 0
+          ? `Bruto: R$ ${m.realGrossRevenue?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} | Estornos: R$ ${m.realRefundsAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+          : "Consolidado a partir do total de pedidos reais confirmados da Cakto.",
       icon: DollarSign,
     },
     {

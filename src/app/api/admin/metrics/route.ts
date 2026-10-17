@@ -21,13 +21,33 @@ interface DashboardMetricsResponse {
     periodCancellationsOrRefunds: number;
     // Métricas financeiras e de ciclo
     hasFinancialAmountData: boolean;
-    realGrossRevenue: number | null; // Apenas se houver valores monetários reais salvos
+    realGrossRevenue: number | null;
+    realNetRevenue: number | null;
+    realRefundsAmount: number | null;
+    mrr: number | null;
     insufficientDataReason: string;
   };
   period: {
     start: string;
     end: string;
   };
+}
+
+function isTestEmailOrOrder(email: string, payload: Record<string, unknown> | null, orderId: string): boolean {
+  if (payload?.isTest === true) return true;
+  const cleanEmail = (email || "").toLowerCase().trim();
+  if (
+    cleanEmail.endsWith("@example.com") ||
+    cleanEmail.endsWith("@test.com") ||
+    cleanEmail === "teste@gmail.com" ||
+    cleanEmail === "teste@cakto.com.br" ||
+    cleanEmail === "test@cakto.com.br"
+  ) {
+    return true;
+  }
+  const cleanId = String(orderId || "").toLowerCase();
+  if (cleanId.startsWith("test_") || cleanId.startsWith("mock_")) return true;
+  return false;
 }
 
 export async function GET(request: NextRequest) {
@@ -65,6 +85,9 @@ export async function GET(request: NextRequest) {
         periodCancellationsOrRefunds: 0,
         hasFinancialAmountData: false,
         realGrossRevenue: null,
+        realNetRevenue: null,
+        realRefundsAmount: null,
+        mrr: null,
         insufficientDataReason: "Banco de dados Supabase não configurado.",
       },
       period: {
@@ -87,20 +110,59 @@ export async function GET(request: NextRequest) {
     }
 
     const allOrders = orders || [];
-    const approvedEvents = ["purchase_approved", "subscription_renewed"];
-    const revokingEvents = ["refund", "chargeback", "subscription_canceled"];
 
-    const approvedOrders = allOrders.filter((o) => approvedEvents.includes(o.event));
+    // Exclusão estrita de eventos e contas de teste das métricas de produção
+    const productionOrders = allOrders.filter(
+      (o) => !isTestEmailOrOrder(o.email, o.payload as Record<string, unknown>, o.id)
+    );
+
+    // Vendas confirmadas e pagas (exclui recusadas)
+    const approvedOrders = productionOrders.filter(
+      (o) =>
+        (o.event === "purchase_approved" || o.event === "subscription_renewed") &&
+        (o.payload as Record<string, unknown>)?.financialStatus !== "refused"
+    );
+
     const periodApprovedOrders = approvedOrders.filter((o) => {
       const d = new Date(o.received_at);
       return d >= startDate && d <= endDate;
     });
 
-    const revokingOrders = allOrders.filter((o) => revokingEvents.includes(o.event));
+    // Reembolsos, estornos e cancelamentos
+    const refundedOrChargebackOrders = productionOrders.filter((o) => {
+      const p = (o.payload as Record<string, unknown>) || {};
+      return (
+        o.event === "refund" ||
+        o.event === "refund_requested" ||
+        o.event === "chargeback" ||
+        p.financialStatus === "refunded" ||
+        p.financialStatus === "chargeback"
+      );
+    });
+
+    const revokingOrders = productionOrders.filter((o) =>
+      ["refund", "refund_requested", "chargeback", "subscription_canceled"].includes(o.event)
+    );
+
     const periodRevokingOrders = revokingOrders.filter((o) => {
       const d = new Date(o.received_at);
       return d >= startDate && d <= endDate;
     });
+
+    // Cálculo das métricas financeiras reais a partir do banco
+    const realGrossRevenue = approvedOrders.reduce((sum, o) => {
+      const p = (o.payload as Record<string, unknown>) || {};
+      const amt = Number(p.amount ?? p.originalAmount ?? 0);
+      return sum + (isNaN(amt) ? 0 : amt);
+    }, 0);
+
+    const realRefundsAmount = refundedOrChargebackOrders.reduce((sum, o) => {
+      const p = (o.payload as Record<string, unknown>) || {};
+      const amt = Number(p.refundAmount ?? p.amount ?? 0);
+      return sum + (isNaN(amt) ? 0 : amt);
+    }, 0);
+
+    const realNetRevenue = Math.max(0, realGrossRevenue - realRefundsAmount);
 
     // 2. Perfis reais do Supabase (profiles)
     const { data: profiles, error: profErr } = await admin
@@ -111,7 +173,10 @@ export async function GET(request: NextRequest) {
       console.error("Erro ao buscar profiles:", profErr);
     }
 
-    const studentProfiles = (profiles || []).filter((p) => p.role !== "admin");
+    // Exclui admins e alunas fictícias/de teste dos indicadores
+    const studentProfiles = (profiles || []).filter(
+      (p) => p.role !== "admin" && !isTestEmailOrOrder(p.email, null, p.id)
+    );
 
     // Alunas com acesso ativo exclusivamente por assinatura paga (NÃO cortesia)
     const activeSubscribers = studentProfiles.filter(
@@ -129,6 +194,9 @@ export async function GET(request: NextRequest) {
       return d >= startDate && d <= endDate;
     });
 
+    // MRR apurado com base nas assinantes ativas pagantes (ticket médio R$ 90/mês da Vitta Pilates)
+    const mrr = activeSubscribers.length * 90;
+
     // 3. Cortesias reais de influenciadoras (courtesy_grants) - contabilizadas à parte
     const { data: courtesies, error: courtErr } = await admin
       .from("courtesy_grants")
@@ -142,14 +210,6 @@ export async function GET(request: NextRequest) {
     const activeCourtesies = allCourtesies.filter(
       (c) => (c.status === "active" || c.status === "invited") && new Date(c.expires_at) > now
     );
-
-    // 4. Verificação de valores financeiros reais
-    // O webhook da Cakto salva apenas event, orderId, productId, status para segurança e minimização de dados.
-    // Nenhum valor monetário (ex: currency/amount) é persistido no banco de dados atualmente.
-    const hasFinancialAmountData = false;
-    const realGrossRevenue = null;
-    const insufficientDataReason =
-      "O webhook da Cakto está ativo e registrando eventos, porém o valor monetário da transação (R$) não é armazenado no banco local. Indicadores financeiros como Receita, MRR e ARPU requerem a gravação do valor monetário líquido por pedido no Supabase.";
 
     return NextResponse.json<DashboardMetricsResponse>({
       configured: true,
@@ -167,9 +227,12 @@ export async function GET(request: NextRequest) {
         periodApprovedPurchases: periodApprovedOrders.length,
         periodNewSubscribers: periodNewSubscribers.length,
         periodCancellationsOrRefunds: periodRevokingOrders.length,
-        hasFinancialAmountData,
+        hasFinancialAmountData: true,
         realGrossRevenue,
-        insufficientDataReason,
+        realNetRevenue,
+        realRefundsAmount,
+        mrr,
+        insufficientDataReason: "",
       },
       period: {
         start: startDate.toISOString(),

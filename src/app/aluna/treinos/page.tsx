@@ -124,9 +124,6 @@ export default function StudentMyWorkoutsPage() {
                   <Play className="w-5 h-5 fill-white ml-0.5" />
                 </div>
               </Link>
-              <span className="absolute bottom-2.5 left-2.5 rounded-full bg-black/45 px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-xs">
-                {lastLesson.durationMinutes} min
-              </span>
             </div>
 
             <div className="flex-1 flex flex-col justify-between space-y-2.5">
@@ -142,13 +139,10 @@ export default function StudentMyWorkoutsPage() {
                 </p>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-[#FAF7F2]">
-                <span className="text-xs text-[#827B77] capitalize">
-                  Nível {lastLesson.level}
-                </span>
+              <div className="flex items-center justify-end pt-2 border-t border-[#FAF7F2]">
                 <Link
                   href={`/aluna/aula/${lastLesson.id}`}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold transition"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#B77D82] hover:bg-[#A3676C] text-white text-xs font-semibold transition cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5 fill-white" />
                   Praticar Agora

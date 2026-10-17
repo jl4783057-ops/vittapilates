@@ -80,6 +80,9 @@ export interface Lesson {
   order: number;
   status: LessonStatus;
   tags: string[];
+  showCategory?: boolean;
+  showDescription?: boolean;
+  showCompletion?: boolean;
   viewsCount?: number;
   completionsCount?: number;
 }

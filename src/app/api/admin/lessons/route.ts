@@ -50,10 +50,11 @@ function sanitizeIdentifier(id?: unknown): string {
 }
 
 export function mapDbToLesson(row: Record<string, unknown>, includePrivateStorageKey = true): Lesson {
+  const tags = Array.isArray(row.tags) ? (row.tags as string[]) : [];
   return {
     id: String(row.id),
     title: String(row.title),
-    description: String(row.description),
+    description: String(row.description || ""),
     categoryId: String(row.category_id),
     subcategoryId: String(row.subcategory_id),
     exerciseId: typeof row.exercise_id === "string" ? row.exercise_id : undefined,
@@ -62,7 +63,7 @@ export function mapDbToLesson(row: Record<string, unknown>, includePrivateStorag
     format: (row.format as LessonFormat) || "aula rápida",
     equipment: (row.equipment as LessonEquipment) || "sem equipamento",
     materials: typeof row.materials === "string" ? row.materials : "Tapete de Pilates (Mat)",
-    thumbnailUrl: String(row.thumbnail_url),
+    thumbnailUrl: String(row.thumbnail_url || ""),
     videoUrl: row.video_provider === "r2" ? "" : String(row.video_url || ""),
     videoProvider: row.video_provider === "r2" ? "r2" : "external",
     ...(includePrivateStorageKey && typeof row.video_storage_key === "string"
@@ -70,32 +71,42 @@ export function mapDbToLesson(row: Record<string, unknown>, includePrivateStorag
       : {}),
     order: Number(row.display_order ?? 0),
     status: (row.status as LessonStatus) || "publicado",
-    tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
+    tags,
+    showCategory: !tags.includes("hide_category"),
+    showDescription: !tags.includes("hide_description"),
+    showCompletion: !tags.includes("hide_completion"),
     viewsCount: Number(row.views_count ?? 0),
     completionsCount: Number(row.completions_count ?? 0),
   };
 }
 
 export function mapLessonToDb(lesson: Lesson): Record<string, unknown> {
+  const cleanTags = (lesson.tags || []).filter(
+    (t) => !["hide_category", "hide_description", "hide_completion"].includes(t)
+  );
+  if (lesson.showCategory === false) cleanTags.push("hide_category");
+  if (lesson.showDescription === false) cleanTags.push("hide_description");
+  if (lesson.showCompletion === false) cleanTags.push("hide_completion");
+
   return {
     id: lesson.id,
     title: lesson.title,
-    description: lesson.description,
+    description: lesson.description || "",
     category_id: lesson.categoryId,
     subcategory_id: lesson.subcategoryId,
     exercise_id: lesson.exerciseId || null,
-    duration_minutes: lesson.durationMinutes,
-    level: lesson.level,
-    format: lesson.format,
-    equipment: lesson.equipment,
+    duration_minutes: lesson.durationMinutes ?? 15,
+    level: lesson.level || "iniciante",
+    format: lesson.format || "aula rápida",
+    equipment: lesson.equipment || "sem equipamento",
     materials: lesson.materials || null,
-    thumbnail_url: lesson.thumbnailUrl,
+    thumbnail_url: lesson.thumbnailUrl || "",
     video_url: lesson.videoProvider === "r2" ? "" : lesson.videoUrl,
     video_provider: lesson.videoProvider === "r2" ? "r2" : "external",
     video_storage_key: lesson.videoProvider === "r2" ? lesson.videoStorageKey || null : null,
-    display_order: lesson.order,
-    status: lesson.status,
-    tags: lesson.tags || [],
+    display_order: lesson.order ?? 0,
+    status: lesson.status || "publicado",
+    tags: cleanTags,
     views_count: lesson.viewsCount ?? 0,
     completions_count: lesson.completionsCount ?? 0,
   };
@@ -252,6 +263,12 @@ export async function POST(request: NextRequest) {
 
     const finalId = sanitizeIdentifier(rawBody.id) || `les-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+    const tags = Array.isArray(rawBody.tags) ? [...rawBody.tags] : [];
+    const cleanTags = tags.filter((t) => !["hide_category", "hide_description", "hide_completion"].includes(t));
+    if (rawBody.showCategory === false) cleanTags.push("hide_category");
+    if (rawBody.showDescription === false) cleanTags.push("hide_description");
+    if (rawBody.showCompletion === false) cleanTags.push("hide_completion");
+
     const dbPayload = {
       id: finalId,
       title,
@@ -270,7 +287,7 @@ export async function POST(request: NextRequest) {
       video_storage_key: videoStorageKey,
       display_order: typeof rawBody.order === "number" ? rawBody.order : 0,
       status,
-      tags: Array.isArray(rawBody.tags) ? rawBody.tags : [],
+      tags: cleanTags,
       views_count: 0,
       completions_count: 0,
     };
@@ -439,6 +456,15 @@ export async function PUT(request: NextRequest) {
         ? (rawLesson.videoStorageKey !== undefined ? rawLesson.videoStorageKey : existingLesson.video_storage_key)
         : null;
 
+    const incomingTags = Array.isArray(rawLesson.tags) ? rawLesson.tags : existingLesson.tags || [];
+    const cleanTags = incomingTags.filter((t: string) => !["hide_category", "hide_description", "hide_completion"].includes(t));
+    const showCat = rawLesson.showCategory !== undefined ? rawLesson.showCategory : !incomingTags.includes("hide_category");
+    const showDesc = rawLesson.showDescription !== undefined ? rawLesson.showDescription : !incomingTags.includes("hide_description");
+    const showComp = rawLesson.showCompletion !== undefined ? rawLesson.showCompletion : !incomingTags.includes("hide_completion");
+    if (showCat === false) cleanTags.push("hide_category");
+    if (showDesc === false) cleanTags.push("hide_description");
+    if (showComp === false) cleanTags.push("hide_completion");
+
     const dbPayload = {
       id: lessonId,
       title,
@@ -451,13 +477,13 @@ export async function PUT(request: NextRequest) {
       format: rawLesson.format || existingLesson.format,
       equipment: rawLesson.equipment || existingLesson.equipment,
       materials: rawLesson.materials !== undefined ? rawLesson.materials : existingLesson.materials,
-      thumbnail_url: rawLesson.thumbnailUrl !== undefined ? rawLesson.thumbnailUrl : existingLesson.thumbnail_url,
+      thumbnail_url: rawLesson.thumbnailUrl !== undefined ? rawLesson.thumbnailUrl : (existingLesson.thumbnail_url || ""),
       video_url: videoProvider === "r2" ? "" : (rawLesson.videoUrl !== undefined ? rawLesson.videoUrl : existingLesson.video_url),
       video_provider: videoProvider,
       video_storage_key: videoStorageKey,
       display_order: rawLesson.order !== undefined ? rawLesson.order : existingLesson.display_order,
       status: rawLesson.status || existingLesson.status,
-      tags: rawLesson.tags || existingLesson.tags || [],
+      tags: cleanTags,
       views_count: existingLesson.views_count ?? 0,
       completions_count: existingLesson.completions_count ?? 0,
     };

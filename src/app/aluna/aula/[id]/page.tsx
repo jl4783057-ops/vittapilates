@@ -207,13 +207,13 @@ function LessonPlayerContent() {
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#827B77] hover:text-[#292321] transition"
         >
           <ArrowLeft className="w-4 h-4" />
-          Voltar à Biblioteca
+          Voltar às Aulas
         </Link>
-        <div className="flex items-center gap-2 text-[11px] text-[#827B77]">
-          <span>{category?.name}</span>
-          <span>•</span>
-          <span className="capitalize">{lesson.level}</span>
-        </div>
+        {category?.name && (
+          <div className="flex items-center gap-2 text-[11px] text-[#827B77]">
+            <span>{category.name}</span>
+          </div>
+        )}
       </div>
 
       {/* Container do Player de Vídeo */}
@@ -223,14 +223,13 @@ function LessonPlayerContent() {
         ) : playbackError ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-5 text-center text-white text-sm">
             <span>{playbackError}</span>
-            <button onClick={() => setPlaybackRetry((value) => value + 1)} className="rounded-full bg-white/15 px-4 py-2">Tentar novamente</button>
+            <button onClick={() => setPlaybackRetry((value) => value + 1)} className="rounded-full bg-white/15 px-4 py-2 text-xs">Tentar novamente</button>
           </div>
         ) : playbackUrl ? (
           <video
             key={playbackUrl}
             src={playbackUrl}
             controls
-            poster={lesson.thumbnailUrl}
             playsInline
             preload="metadata"
             className="w-full h-full object-contain"
@@ -243,116 +242,59 @@ function LessonPlayerContent() {
       </section>
 
       {/* Ações e Conclusão */}
-      <div className="flex items-center justify-between gap-3 bg-[#FFFFFF] p-4 rounded-2xl border border-[#EADBCE] shadow-2xs">
-        <div>
-          <p className="text-xs font-medium text-[#827B77]">Status desta prática:</p>
-          <p className="text-sm font-serif font-bold text-[#292321]">
-            {isCompleted ? "Aula concluída!" : "Ainda em andamento"}
-          </p>
-        </div>
+      {lesson.showCompletion !== false && (
+        <div className="flex items-center justify-between gap-3 bg-[#FFFFFF] p-4 rounded-2xl border border-[#EADBCE] shadow-2xs">
+          <div>
+            <p className="text-xs font-medium text-[#827B77]">Status desta prática:</p>
+            <p className="text-sm font-serif font-bold text-[#292321]">
+              {isCompleted ? "Aula concluída!" : "Ainda em andamento"}
+            </p>
+          </div>
 
-        <button
-          onClick={handleToggleComplete}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-semibold transition shadow-xs ${
-            isCompleted
-              ? "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
-              : "bg-[#B77D82] text-white hover:bg-[#A3676C]"
-          }`}
-        >
-          {isCompleted ? (
-            <>
-              <Check className="w-4 h-4 stroke-[2.5]" />
-              Concluída (Desmarcar)
-            </>
-          ) : (
-            <>
-              <CheckCircle2 className="w-4 h-4" />
-              Marcar como Concluída
-            </>
-          )}
-        </button>
-      </div>
+          <button
+            onClick={handleToggleComplete}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-semibold transition shadow-xs cursor-pointer ${
+              isCompleted
+                ? "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
+                : "bg-[#B77D82] text-white hover:bg-[#A3676C]"
+            }`}
+          >
+            {isCompleted ? (
+              <>
+                <Check className="w-4 h-4 stroke-[2.5]" />
+                Concluída (Desmarcar)
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                Marcar como Concluída
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Detalhes da Aula */}
-      <section className="bg-[#FFFFFF] p-5 rounded-3xl border border-[#EADBCE] space-y-4 shadow-2xs">
+      <section className="bg-[#FFFFFF] p-5 sm:p-6 rounded-3xl border border-[#EADBCE] shadow-2xs">
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="px-2.5 py-0.5 rounded-full bg-[#F7EEEE] text-[#B77D82] font-semibold text-[11px]">
-              {category?.name}
-            </span>
-            {subcategory && (
-              <span className="text-[11px] text-[#827B77]">
-                / {subcategory.name}
-              </span>
-            )}
-          </div>
+          {lesson.showCategory !== false && (category || subcategory) && (
+            <div className="flex items-center gap-2 text-xs">
+              {category && (
+                <span className="px-2.5 py-0.5 rounded-full bg-[#F7EEEE] text-[#B77D82] font-semibold text-[11px]">
+                  {category.name}
+                </span>
+              )}
+              {subcategory && (
+                <span className="text-[11px] text-[#827B77]">
+                  / {subcategory.name}
+                </span>
+              )}
+            </div>
+          )}
           <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#292321]">
             {lesson.title}
           </h1>
         </div>
-
-        {/* Metadados */}
-        <div className="grid grid-cols-3 gap-2 py-3 border-y border-[#FAF7F2] text-center">
-          <div className="space-y-0.5">
-            <span className="text-[10px] uppercase font-bold text-[#827B77] block">
-              Duração
-            </span>
-            <p className="text-xs font-semibold text-[#292321]">
-              {lesson.durationMinutes} minutos
-            </p>
-          </div>
-          <div className="space-y-0.5">
-            <span className="text-[10px] uppercase font-bold text-[#827B77] block">
-              Nível
-            </span>
-            <p className="text-xs font-semibold text-[#292321] capitalize">
-              {lesson.level}
-            </p>
-          </div>
-          <div className="space-y-0.5">
-            <span className="text-[10px] uppercase font-bold text-[#827B77] block">
-              Formato
-            </span>
-            <p className="text-xs font-semibold text-[#292321] capitalize">
-              {lesson.format}
-            </p>
-          </div>
-        </div>
-
-        {/* Descrição */}
-        <div className="space-y-1">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#827B77]">
-            Sobre esta prática
-          </h2>
-          <p className="text-xs sm:text-sm text-[#827B77] leading-relaxed">
-            {lesson.description}
-          </p>
-        </div>
-
-        {/* Materiais Necessários */}
-        <div className="p-3.5 rounded-2xl bg-[#FAF7F2] border border-[#EADBCE] space-y-1">
-          <h3 className="text-xs font-bold text-[#292321] flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-[#B77D82]" />
-            Materiais e Acessórios
-          </h3>
-          <p className="text-xs text-[#827B77]">
-            {lesson.materials || "Tapete de Pilates (Mat) ou uma superfície macia e confortável."}
-          </p>
-        </div>
-
-        {/* Tags */}
-        {lesson.tags && lesson.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {lesson.tags.map((tag) => (
-              <span
-                key={tag}
-                className="text-[10px] bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77] px-2.5 py-0.5 rounded-full"
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
-        )}
       </section>
 
       {/* Próxima Aula */}
@@ -366,23 +308,16 @@ function LessonPlayerContent() {
             className="flex items-center justify-between p-3.5 rounded-2xl bg-[#FFFFFF] border border-[#EADBCE] hover:border-[#B77D82] transition group shadow-2xs"
           >
             <div className="flex items-center gap-3">
-              <div className="w-16 h-12 rounded-xl overflow-hidden bg-[#F3EAE3] shrink-0">
-                <img
-                  src={nextLesson.thumbnailUrl}
-                  alt={nextLesson.title}
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-11 h-11 rounded-xl overflow-hidden bg-[#FAF7F2] border border-[#EADBCE] shrink-0 flex items-center justify-center text-[#B77D82]">
+                <Play className="w-4 h-4 ml-0.5 fill-current" />
               </div>
               <div className="min-w-0">
                 <p className="text-[10px] font-semibold text-[#B77D82] uppercase">
                   A seguir
                 </p>
-                <h3 className="font-serif font-bold text-xs text-[#292321] line-clamp-1 group-hover:text-[#B77D82] transition">
+                <h3 className="font-serif font-bold text-xs sm:text-sm text-[#292321] line-clamp-1 group-hover:text-[#B77D82] transition">
                   {nextLesson.title}
                 </h3>
-                <span className="text-[11px] text-[#827B77]">
-                  {nextLesson.durationMinutes} min • {nextLesson.level}
-                </span>
               </div>
             </div>
 

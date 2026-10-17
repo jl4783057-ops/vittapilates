@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   CheckCircle2,
 } from "lucide-react";
-import ImageUploadField from "@/components/ui/ImageUploadField";
 
 export default function AdminLessonsPage() {
   const { lessons, setLessons, categories, subcategories, exercises } = useApp();
@@ -73,6 +72,9 @@ export default function AdminLessonsPage() {
     order: number;
     status: LessonStatus;
     tagsString: string;
+    showCategory: boolean;
+    showDescription: boolean;
+    showCompletion: boolean;
   }>({
     title: "",
     description: "",
@@ -91,6 +93,9 @@ export default function AdminLessonsPage() {
     order: 1,
     status: "publicado",
     tagsString: "postura, rotina da manhã",
+    showCategory: true,
+    showDescription: true,
+    showCompletion: true,
   });
 
   const filteredLessons = lessons.filter((l) => {
@@ -127,7 +132,10 @@ export default function AdminLessonsPage() {
       videoStorageKey: "",
       order: lessons.length + 1,
       status: "publicado",
-      tagsString: "postura, bem-estar",
+      tagsString: "",
+      showCategory: true,
+      showDescription: true,
+      showCompletion: true,
     });
     setIsCreating(true);
   };
@@ -139,22 +147,25 @@ export default function AdminLessonsPage() {
     setEditingLesson(lesson);
     setFormData({
       title: lesson.title,
-      description: lesson.description,
+      description: lesson.description || "",
       categoryId: lesson.categoryId,
       subcategoryId: lesson.subcategoryId,
       exerciseId: lesson.exerciseId || undefined,
-      durationMinutes: lesson.durationMinutes,
-      level: lesson.level,
-      format: lesson.format,
-      equipment: lesson.equipment,
-      materials: lesson.materials,
-      thumbnailUrl: lesson.thumbnailUrl,
-      videoUrl: lesson.videoUrl,
-      videoProvider: lesson.videoProvider || "external",
+      durationMinutes: lesson.durationMinutes ?? 15,
+      level: lesson.level || "iniciante",
+      format: lesson.format || "aula rápida",
+      equipment: lesson.equipment || "sem equipamento",
+      materials: lesson.materials || "Tapete de Pilates (Mat)",
+      thumbnailUrl: lesson.thumbnailUrl || "",
+      videoUrl: lesson.videoUrl || "",
+      videoProvider: lesson.videoProvider || (lesson.videoStorageKey ? "r2" : "external"),
       videoStorageKey: lesson.videoStorageKey || "",
-      order: lesson.order,
+      order: lesson.order ?? 1,
       status: lesson.status,
       tagsString: lesson.tags?.join(", ") || "",
+      showCategory: lesson.showCategory !== false,
+      showDescription: lesson.showDescription !== false,
+      showCompletion: lesson.showCompletion !== false,
     });
   };
 
@@ -268,17 +279,20 @@ export default function AdminLessonsPage() {
       categoryId: formData.categoryId,
       subcategoryId: formData.subcategoryId || (subcategories.find((s) => s.categoryId === formData.categoryId)?.id || "sub-1-1"),
       exerciseId: formData.exerciseId || undefined,
-      durationMinutes: Number(formData.durationMinutes),
-      level: formData.level,
-      format: formData.format,
-      equipment: formData.equipment,
-      materials: formData.materials,
-      thumbnailUrl: formData.thumbnailUrl,
+      durationMinutes: 15,
+      level: "iniciante",
+      format: "aula rápida",
+      equipment: "sem equipamento",
+      materials: "",
+      thumbnailUrl: "",
       videoUrl: formData.videoUrl,
       videoProvider: formData.videoProvider,
       videoStorageKey: formData.videoStorageKey,
       order: Number(formData.order),
       status: formData.status,
+      showCategory: formData.showCategory,
+      showDescription: formData.showDescription,
+      showCompletion: formData.showCompletion,
       tags,
       viewsCount: editingLesson ? (editingLesson.viewsCount ?? 0) : 0,
       completionsCount: editingLesson ? (editingLesson.completionsCount ?? 0) : 0,
@@ -472,52 +486,51 @@ export default function AdminLessonsPage() {
                   key={les.id}
                   className="bg-[#FFFFFF] rounded-3xl border border-[#EADBCE] overflow-hidden shadow-2xs flex flex-col justify-between hover:border-[#B77D82]/50 transition group"
                 >
-                  <div>
-                    <div className="relative h-40 w-full bg-[#F3EAE3] overflow-hidden">
-                      {les.thumbnailUrl ? (
-                        <img
-                          src={les.thumbnailUrl}
-                          alt={les.title}
-                          className="w-full h-full object-cover group-hover:scale-102 transition duration-300"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-[#827B77] gap-1">
-                          <Video className="w-8 h-8 opacity-40 text-[#B77D82]" />
-                          <span className="text-[10px]">Sem foto de capa</span>
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-black/20" />
-                      <div className="absolute top-2.5 left-2.5 bg-white/95 px-2 py-0.5 rounded-full text-[10px] font-bold text-[#292321] shadow-xs">
-                        {cat?.name || "Pilates"}
-                      </div>
-                      <div className="absolute bottom-2.5 right-2.5 bg-black/70 text-white px-2 py-0.5 rounded-full text-[11px] font-mono flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-[#EBD6D5]" />
-                        {les.durationMinutes} min
-                      </div>
+                  <div className="p-5 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="bg-[#FAF7F2] border border-[#EADBCE] px-2.5 py-1 rounded-full text-[10px] font-bold text-[#292321]">
+                        {cat?.name || "Pilates"} {sub ? `• ${sub.name}` : ""}
+                      </span>
+                      <span className="text-[11px] font-mono text-[#827B77] bg-[#FAF7F2] px-2 py-0.5 rounded-full border border-[#EADBCE]">
+                        Ordem #{les.order}
+                      </span>
                     </div>
 
-                    <div className="p-4 space-y-2">
-                      <span className="text-[10px] text-[#827B77] font-semibold uppercase tracking-wider block">
-                        Subcategoria: {sub?.name || "Geral"}
-                      </span>
-                      <h3 className="font-serif font-bold text-sm text-[#292321] line-clamp-1">
+                    <div>
+                      {les.exerciseId && (
+                        <span className="text-[10px] text-[#B77D82] font-semibold uppercase tracking-wider block mb-0.5">
+                          {exercises.find((ex) => ex.id === les.exerciseId)?.title || "Exercício"}
+                        </span>
+                      )}
+                      <h3 className="font-serif font-bold text-base text-[#292321]">
                         {les.title}
                       </h3>
-                      <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed">
-                        {les.description}
-                      </p>
+                      {les.description && (
+                        <p className="text-xs text-[#827B77] line-clamp-2 leading-relaxed mt-1">
+                          {les.description}
+                        </p>
+                      )}
+                    </div>
 
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
-                        <span className="capitalize px-2 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77]">
-                          {les.level}
-                        </span>
-                        <span className="capitalize px-2 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77]">
-                          {les.format}
-                        </span>
-                        <span className="capitalize px-2 py-0.5 rounded-full bg-[#FAF7F2] border border-[#EADBCE] text-[#827B77]">
-                          {les.equipment}
-                        </span>
-                      </div>
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px]">
+                      <span className={`px-2 py-0.5 rounded-full border ${
+                        les.videoStorageKey
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : les.videoUrl
+                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                          : "bg-amber-50 text-amber-700 border-amber-200"
+                      }`}>
+                        {les.videoStorageKey ? "Vídeo R2 Privado" : les.videoUrl ? "Vídeo Externo" : "Sem Vídeo"}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full border ${les.showCategory !== false ? "bg-[#FAF7F2] text-[#827B77] border-[#EADBCE]" : "bg-zinc-100 text-zinc-500 border-zinc-200 line-through"}`}>
+                        Cat./Subcat.
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full border ${les.showDescription !== false ? "bg-[#FAF7F2] text-[#827B77] border-[#EADBCE]" : "bg-zinc-100 text-zinc-500 border-zinc-200 line-through"}`}>
+                        Descrição
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full border ${les.showCompletion !== false ? "bg-[#FAF7F2] text-[#827B77] border-[#EADBCE]" : "bg-zinc-100 text-zinc-500 border-zinc-200 line-through"}`}>
+                        Conclusão
+                      </span>
                     </div>
                   </div>
 
@@ -689,69 +702,10 @@ export default function AdminLessonsPage() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold uppercase text-[#827B77] block">
-                    Duração (min)
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.durationMinutes}
-                    onChange={(e) => setFormData({ ...formData, durationMinutes: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold uppercase text-[#827B77] block">
-                    Nível
-                  </label>
-                  <select
-                    value={formData.level}
-                    onChange={(e) => setFormData({ ...formData, level: e.target.value as LessonLevel })}
-                    className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
-                  >
-                    <option value="iniciante">Iniciante</option>
-                    <option value="intermediário">Intermediário</option>
-                    <option value="avançado">Avançado</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold uppercase text-[#827B77] block">
-                    Formato
-                  </label>
-                  <select
-                    value={formData.format}
-                    onChange={(e) => setFormData({ ...formData, format: e.target.value as LessonFormat })}
-                    className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
-                  >
-                    <option value="aula rápida">Aula Rápida</option>
-                    <option value="aula completa">Aula Completa</option>
-                    <option value="sequência guiada">Sequência Guiada</option>
-                    <option value="programa por dias">Programa por Dias</option>
-                  </select>
-                </div>
-              </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold uppercase text-[#827B77] block">
-                    Equipamento
-                  </label>
-                  <select
-                    value={formData.equipment}
-                    onChange={(e) => setFormData({ ...formData, equipment: e.target.value as LessonEquipment })}
-                    className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
-                  >
-                    <option value="sem equipamento">Sem Equipamento</option>
-                    <option value="com acessórios">Com Acessórios</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold uppercase text-[#827B77] block">
-                    Status
+                    Status da Aula
                   </label>
                   <select
                     value={formData.status}
@@ -762,28 +716,55 @@ export default function AdminLessonsPage() {
                     <option value="rascunho">Rascunho</option>
                   </select>
                 </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold uppercase text-[#827B77] block">
+                    Ordem de Exibição
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.order}
+                    onChange={(e) => setFormData({ ...formData, order: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-1">
+              {/* Opções de Visibilidade na Área da Aluna */}
+              <div className="space-y-2 rounded-2xl border border-[#EADBCE] bg-[#FAF7F2] p-4">
                 <label className="text-[11px] font-bold uppercase text-[#827B77] block">
-                  Materiais Necessários
+                  Visibilidade na Área da Aluna
                 </label>
-                <input
-                  type="text"
-                  value={formData.materials}
-                  onChange={(e) => setFormData({ ...formData, materials: e.target.value })}
-                  placeholder="Ex: Tapete de Pilates (Mat), faixa elástica opcional"
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] bg-[#FAF7F2] text-xs text-[#292321]"
-                />
+                <div className="space-y-2 text-xs text-[#292321]">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.showCategory}
+                      onChange={(e) => setFormData({ ...formData, showCategory: e.target.checked })}
+                      className="rounded border-[#EADBCE] text-[#B77D82] focus:ring-[#B77D82]"
+                    />
+                    <span>Exibir etiqueta de Categoria e Subcategoria</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.showDescription}
+                      onChange={(e) => setFormData({ ...formData, showDescription: e.target.checked })}
+                      className="rounded border-[#EADBCE] text-[#B77D82] focus:ring-[#B77D82]"
+                    />
+                    <span>Exibir descrição da aula</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.showCompletion}
+                      onChange={(e) => setFormData({ ...formData, showCompletion: e.target.checked })}
+                      className="rounded border-[#EADBCE] text-[#B77D82] focus:ring-[#B77D82]"
+                    />
+                    <span>Exibir controle e status de conclusão</span>
+                  </label>
+                </div>
               </div>
-
-              <ImageUploadField
-                label="Imagem de Capa (Thumbnail)"
-                value={formData.thumbnailUrl}
-                onChange={(url) => setFormData({ ...formData, thumbnailUrl: url })}
-                aspectRatio="video"
-                helperText="Clique em 'Enviar imagem' para selecionar a capa da aula do seu Mac ou Windows (JPG, PNG ou WebP até 5 MB)."
-              />
 
               <div className="space-y-3 rounded-2xl border border-[#EADBCE] bg-[#FAF7F2] p-4">
                 <label className="text-[11px] font-bold uppercase text-[#827B77] block">Vídeo da aula</label>

@@ -74,6 +74,9 @@ function AdminExercisesContent() {
     videoStorageKey: string;
     order: number;
     status: LessonStatus;
+    showCategory: boolean;
+    showDescription: boolean;
+    showCompletion: boolean;
   }>({
     title: "",
     description: "",
@@ -88,6 +91,9 @@ function AdminExercisesContent() {
     videoStorageKey: "",
     order: 1,
     status: "publicado",
+    showCategory: true,
+    showDescription: true,
+    showCompletion: true,
   });
 
   // Estados de upload de vídeo para R2
@@ -372,6 +378,9 @@ function AdminExercisesContent() {
       videoStorageKey: "",
       order: lessonNumber,
       status: "publicado",
+      showCategory: true,
+      showDescription: true,
+      showCompletion: true,
     });
 
     setIsLessonModalOpen(true);
@@ -386,7 +395,7 @@ function AdminExercisesContent() {
 
     setLessonFormData({
       title: lesson.title,
-      description: lesson.description,
+      description: lesson.description || "",
       durationMinutes: lesson.durationMinutes,
       level: lesson.level,
       format: lesson.format,
@@ -398,6 +407,9 @@ function AdminExercisesContent() {
       videoStorageKey: lesson.videoStorageKey || "",
       order: lesson.order,
       status: lesson.status,
+      showCategory: lesson.showCategory !== false,
+      showDescription: lesson.showDescription !== false,
+      showCompletion: lesson.showCompletion !== false,
     });
 
     setIsLessonModalOpen(true);
@@ -563,10 +575,10 @@ function AdminExercisesContent() {
           categoryId: selectedCatId,
           subcategoryId: selectedSubId,
           exerciseId: targetExerciseForLesson.id,
-          durationMinutes: Number(lessonFormData.durationMinutes),
-          level: lessonFormData.level,
-          format: lessonFormData.format,
-          equipment: lessonFormData.equipment,
+          durationMinutes: Number(lessonFormData.durationMinutes || 15),
+          level: lessonFormData.level || "iniciante",
+          format: lessonFormData.format || "aula rápida",
+          equipment: lessonFormData.equipment || "sem equipamento",
           materials: lessonFormData.materials.trim() || "Tapete de Pilates (Mat)",
           thumbnailUrl: lessonFormData.thumbnailUrl.trim(),
           videoUrl: lessonFormData.videoProvider === "r2" ? "" : lessonFormData.videoUrl.trim(),
@@ -574,6 +586,9 @@ function AdminExercisesContent() {
           videoStorageKey: lessonFormData.videoProvider === "r2" ? lessonFormData.videoStorageKey : undefined,
           order: Number(lessonFormData.order),
           status: lessonFormData.status,
+          showCategory: lessonFormData.showCategory,
+          showDescription: lessonFormData.showDescription,
+          showCompletion: lessonFormData.showCompletion,
         };
 
         const res = await fetch("/api/admin/lessons", {
@@ -597,10 +612,10 @@ function AdminExercisesContent() {
           categoryId: selectedCatId,
           subcategoryId: selectedSubId,
           exerciseId: targetExerciseForLesson.id,
-          durationMinutes: Number(lessonFormData.durationMinutes),
-          level: lessonFormData.level,
-          format: lessonFormData.format,
-          equipment: lessonFormData.equipment,
+          durationMinutes: Number(lessonFormData.durationMinutes || 15),
+          level: lessonFormData.level || "iniciante",
+          format: lessonFormData.format || "aula rápida",
+          equipment: lessonFormData.equipment || "sem equipamento",
           materials: lessonFormData.materials.trim() || "Tapete de Pilates (Mat)",
           thumbnailUrl: lessonFormData.thumbnailUrl.trim(),
           videoUrl: lessonFormData.videoProvider === "r2" ? "" : lessonFormData.videoUrl.trim(),
@@ -608,6 +623,9 @@ function AdminExercisesContent() {
           videoStorageKey: lessonFormData.videoProvider === "r2" ? lessonFormData.videoStorageKey : undefined,
           order: Number(lessonFormData.order),
           status: lessonFormData.status,
+          showCategory: lessonFormData.showCategory,
+          showDescription: lessonFormData.showDescription,
+          showCompletion: lessonFormData.showCompletion,
           tags: ["exercício", targetExerciseForLesson.title.toLowerCase()],
         };
 
@@ -1119,43 +1137,42 @@ function AdminExercisesContent() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-[#292321] mb-1">
-                    Duração (minutos)
+              {/* OPÇÕES DE VISIBILIDADE NA ÁREA DA ALUNA */}
+              <div className="p-4 rounded-2xl bg-white border border-[#EADBCE] space-y-3">
+                <label className="text-xs font-bold text-[#292321] uppercase tracking-wider block">
+                  Visibilidade na Área da Aluna
+                </label>
+                <div className="space-y-2.5">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs text-[#292321]">
+                    <input
+                      type="checkbox"
+                      checked={lessonFormData.showCategory}
+                      onChange={(e) => setLessonFormData({ ...lessonFormData, showCategory: e.target.checked })}
+                      className="w-4 h-4 rounded text-[#B77D82] focus:ring-[#B77D82] border-[#EADBCE]"
+                    />
+                    <span>Exibir categoria e subcategoria no topo da aula</span>
                   </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={lessonFormData.durationMinutes}
-                    onChange={(e) => setLessonFormData({ ...lessonFormData, durationMinutes: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] text-xs sm:text-sm text-[#292321]"
-                  />
-                </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-[#292321] mb-1">
-                    Nível de Dificuldade
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs text-[#292321]">
+                    <input
+                      type="checkbox"
+                      checked={lessonFormData.showDescription}
+                      onChange={(e) => setLessonFormData({ ...lessonFormData, showDescription: e.target.checked })}
+                      className="w-4 h-4 rounded text-[#B77D82] focus:ring-[#B77D82] border-[#EADBCE]"
+                    />
+                    <span>Exibir descrição no cartão da aula</span>
                   </label>
-                  <select
-                    value={lessonFormData.level}
-                    onChange={(e) => setLessonFormData({ ...lessonFormData, level: e.target.value as LessonLevel })}
-                    className="w-full px-3.5 py-2 rounded-xl border border-[#EADBCE] text-xs sm:text-sm text-[#292321] bg-white"
-                  >
-                    <option value="iniciante">Iniciante</option>
-                    <option value="intermediário">Intermediário</option>
-                    <option value="avançado">Avançado</option>
-                  </select>
-                </div>
-              </div>
 
-              {/* Upload de Imagem de Capa (Thumbnail) */}
-              <div>
-                <ImageUploadField
-                  label="Capa da Aula (Thumbnail)"
-                  value={lessonFormData.thumbnailUrl}
-                  onChange={(url) => setLessonFormData({ ...lessonFormData, thumbnailUrl: url })}
-                />
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs text-[#292321]">
+                    <input
+                      type="checkbox"
+                      checked={lessonFormData.showCompletion}
+                      onChange={(e) => setLessonFormData({ ...lessonFormData, showCompletion: e.target.checked })}
+                      className="w-4 h-4 rounded text-[#B77D82] focus:ring-[#B77D82] border-[#EADBCE]"
+                    />
+                    <span>Exibir bloco de status de conclusão da prática</span>
+                  </label>
+                </div>
               </div>
 
               {/* SEÇÃO DO VÍDEO (CLOUDFLARE R2 OU EXTERNO) */}

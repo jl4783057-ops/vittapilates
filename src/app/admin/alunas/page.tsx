@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Gift,
   KeyRound,
+  Mail,
 } from "lucide-react";
 import ImageUploadField from "@/components/ui/ImageUploadField";
 
@@ -27,6 +28,7 @@ export default function AdminStudentsPage() {
   const [toastMessage, setToastMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [generatingLink, setGeneratingLink] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
 
   const fetchStudents = useCallback(async () => {
     setLoading(true);
@@ -116,6 +118,34 @@ export default function AdminStudentsPage() {
       setTimeout(() => setToastMessage(null), 4000);
     } finally {
       setGeneratingLink(false);
+    }
+  };
+
+  const handleResendEmail = async (email: string, name: string) => {
+    setResendingEmail(true);
+    try {
+      const res = await fetch("/api/admin/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resend_invite_email", email, name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao reenviar e-mail de acesso.");
+      if (data.emailSent) {
+        setToastMessage({ type: "success", text: "E-mail de acesso enviado com sucesso via Resend!" });
+      } else {
+        setToastMessage({
+          type: "error",
+          text: `Falha no envio do e-mail (${data.error || "provedor recusou o destinatário"}). Use a opção de copiar link.`,
+        });
+      }
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err) {
+      console.error("Erro ao reenviar e-mail:", err);
+      setToastMessage({ type: "error", text: err instanceof Error ? err.message : "Erro ao reenviar." });
+      setTimeout(() => setToastMessage(null), 4000);
+    } finally {
+      setResendingEmail(false);
     }
   };
 
@@ -412,26 +442,37 @@ export default function AdminStudentsPage() {
               </div>
             </div>
 
-            {/* Ação de Segurança: Gerar Link de Primeiro Acesso */}
-            <div className="pt-2 border-t border-[#EADBCE] space-y-2">
+            {/* Ação de Segurança: Gerar Link de Primeiro Acesso e Reenviar E-mail */}
+            <div className="pt-2 border-t border-[#EADBCE] space-y-2.5">
               <label className="text-[11px] font-bold uppercase text-[#827B77] block">
-                Definição de Senha e Primeiro Acesso:
+                Acesso e Definição de Senha:
               </label>
-              <button
-                type="button"
-                disabled={generatingLink}
-                onClick={() => handleGeneratePasswordLink(selectedUser.email)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-[#B77D82] text-[#B77D82] bg-[#FAF7F2] hover:bg-[#F7EEEE] text-xs font-semibold transition cursor-pointer disabled:opacity-50"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                {generatingLink
-                  ? "Gerando link seguro..."
-                  : copiedLink
-                  ? "✓ Link Seguro Copiado!"
-                  : "Gerar e Copiar Link de Primeiro Acesso"}
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={resendingEmail}
+                  onClick={() => handleResendEmail(selectedUser.email, selectedUser.name)}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-[#FAF7F2] border border-[#EADBCE] text-[#292321] hover:bg-[#F7EEEE] hover:text-[#B77D82] text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  {resendingEmail ? "Enviando..." : "Reenviar E-mail"}
+                </button>
+                <button
+                  type="button"
+                  disabled={generatingLink}
+                  onClick={() => handleGeneratePasswordLink(selectedUser.email)}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-[#B77D82] text-[#B77D82] bg-[#FAF7F2] hover:bg-[#F7EEEE] text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  {generatingLink
+                    ? "Gerando link..."
+                    : copiedLink
+                    ? "✓ Copiado!"
+                    : "Copiar Link"}
+                </button>
+              </div>
               <p className="text-[10px] text-[#827B77] leading-relaxed">
-                Gera um link seguro para a aluna definir a senha diretamente, útil caso o e-mail não tenha sido entregue.
+                Dispara o e-mail oficial via Resend ou copia o link direto com token de definição de senha para atendimento via WhatsApp.
               </p>
             </div>
 

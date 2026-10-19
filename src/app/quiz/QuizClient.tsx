@@ -135,15 +135,17 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     }
   });
 
-  // 2. Respostas recuperadas do armazenamento isolado da sessão
+  // 2. Respostas recuperadas do armazenamento de sessão efêmero (sessionStorage)
   const [answers, setAnswers] = useState<QuizAnswers>(() => {
     if (typeof window === "undefined") return INITIAL_ANSWERS;
     try {
       const sid = sessionStorage.getItem("vitta_quiz_session_id");
       if (sid) {
-        const saved = localStorage.getItem(`vitta_quiz_data_${sid}`);
+        const saved = sessionStorage.getItem(`vitta_quiz_data_${sid}`) || localStorage.getItem(`vitta_quiz_data_${sid}`);
         if (saved) {
           const parsed = JSON.parse(saved);
+          // Limpa do localStorage legado por segurança
+          try { localStorage.removeItem(`vitta_quiz_data_${sid}`); } catch {}
           if (parsed.answers) {
             return { ...INITIAL_ANSWERS, ...parsed.answers };
           }
@@ -156,16 +158,12 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
   });
 
   // 3. Etapa atual:
-  // 1: Abertura, 2: Aniversário, 3: Prova social, 4: Objetivo, 5: Peso ideal anterior, 6: Motivacional,
-  // 7: Área de atenção, 8: Tipo de corpo, 9: Formato desejado, 10: Rotina, 11: Energia, 12: Atividade,
-  // 13: Sono, 14: Hábitos, 15: Altura, 16: Peso atual, 17: Objetivo para o peso, 18: Peso desejado,
-  // 19: Nome, 20: Resumo fitness, 21: Ritmo, 22: Criando plano, 23: Plano pronto, 24: Página de vendas final
   const [currentStep, setCurrentStep] = useState<number>(() => {
     if (typeof window === "undefined") return 1;
     try {
       const sid = sessionStorage.getItem("vitta_quiz_session_id");
       if (sid) {
-        const saved = localStorage.getItem(`vitta_quiz_data_${sid}`);
+        const saved = sessionStorage.getItem(`vitta_quiz_data_${sid}`) || localStorage.getItem(`vitta_quiz_data_${sid}`);
         if (saved) {
           const parsed = JSON.parse(saved);
           if (typeof parsed.step === "number" && parsed.step >= 1 && parsed.step <= 24) {
@@ -246,16 +244,18 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
     }
   }, [currentStep]);
 
-  // Salvar no localStorage isolado
+  // Salvar no sessionStorage efêmero (limpo automaticamente ao fechar a aba)
   useEffect(() => {
     if (!sessionId) return;
     try {
-      localStorage.setItem(
+      sessionStorage.setItem(
         `vitta_quiz_data_${sessionId}`,
         JSON.stringify({ step: currentStep, answers, updatedAt: new Date().toISOString() })
       );
+      // Garante remoção de resquícios de localStorage
+      try { localStorage.removeItem(`vitta_quiz_data_${sessionId}`); } catch {}
     } catch (e) {
-      console.warn("Aviso ao salvar sessão no localStorage:", e);
+      console.warn("Aviso ao salvar sessão no sessionStorage:", e);
     }
   }, [answers, currentStep, sessionId]);
 

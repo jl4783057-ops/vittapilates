@@ -102,38 +102,79 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { id, subscriptionStatus, subscriptionPlan, accessType, avatarUrl, name, phone } = body;
 
-    if (!id) {
-      return NextResponse.json({ error: "ID da aluna obrigatório." }, { status: 400 });
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!id || typeof id !== "string" || !UUID_RE.test(id.trim())) {
+      return NextResponse.json({ error: "ID da aluna inválido." }, { status: 400 });
     }
 
+    const cleanId = id.trim();
     const updatePayload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
 
-    if (subscriptionStatus !== undefined) updatePayload.subscription_status = subscriptionStatus;
-    if (subscriptionPlan !== undefined) updatePayload.subscription_plan = subscriptionPlan;
-    if (accessType !== undefined) updatePayload.access_type = accessType;
-    if (avatarUrl !== undefined) updatePayload.avatar_url = avatarUrl || null;
-    if (name !== undefined) updatePayload.name = name;
-    if (phone !== undefined) updatePayload.phone = phone || null;
+    const VALID_STATUSES = new Set(["active", "inactive", "trial", "canceled"]);
+    if (subscriptionStatus !== undefined) {
+      if (typeof subscriptionStatus !== "string" || !VALID_STATUSES.has(subscriptionStatus)) {
+        return NextResponse.json({ error: "Status de assinatura inválido." }, { status: 400 });
+      }
+      updatePayload.subscription_status = subscriptionStatus;
+    }
+
+    const VALID_PLANS = new Set(["Mensal", "Trimestral", "Anual"]);
+    if (subscriptionPlan !== undefined) {
+      if (typeof subscriptionPlan !== "string" || !VALID_PLANS.has(subscriptionPlan)) {
+        return NextResponse.json({ error: "Plano de assinatura inválido." }, { status: 400 });
+      }
+      updatePayload.subscription_plan = subscriptionPlan;
+    }
+
+    const VALID_ACCESS_TYPES = new Set(["none", "subscriber", "courtesy"]);
+    if (accessType !== undefined) {
+      if (typeof accessType !== "string" || !VALID_ACCESS_TYPES.has(accessType)) {
+        return NextResponse.json({ error: "Tipo de acesso inválido." }, { status: 400 });
+      }
+      updatePayload.access_type = accessType;
+    }
+
+    if (avatarUrl !== undefined) {
+      const cleanAvatar = typeof avatarUrl === "string" ? avatarUrl.trim() : "";
+      if (cleanAvatar && !/^(https:\/\/|\/)/.test(cleanAvatar)) {
+        return NextResponse.json({ error: "Endereço de avatar inválido." }, { status: 400 });
+      }
+      updatePayload.avatar_url = cleanAvatar || null;
+    }
+
+    if (name !== undefined) {
+      const cleanName = typeof name === "string" ? name.trim() : "";
+      if (cleanName.length < 2 || cleanName.length > 150) {
+        return NextResponse.json({ error: "O nome deve ter entre 2 e 150 caracteres." }, { status: 400 });
+      }
+      updatePayload.name = cleanName;
+    }
+
+    if (phone !== undefined) {
+      const cleanPhone = typeof phone === "string" ? phone.trim().slice(0, 30) : null;
+      updatePayload.phone = cleanPhone || null;
+    }
 
     const admin = getSupabaseAdmin();
     const { data, error } = await admin
       .from("profiles")
       .update(updatePayload)
-      .eq("id", id)
+      .eq("id", cleanId)
       .select("*")
       .single();
 
     if (error) {
-      throw error;
+      console.error("[students PATCH] Erro ao atualizar aluna no Supabase:", error.message);
+      return NextResponse.json({ error: "Falha ao salvar alterações da aluna no banco." }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, student: mapDbProfileToUser(data) });
   } catch (err: unknown) {
-    console.error("Erro ao atualizar aluna no Supabase:", err);
+    console.error("[students PATCH] Erro inesperado:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro ao atualizar aluna no banco." },
+      { error: "Erro interno ao processar a atualização." },
       { status: 500 }
     );
   }

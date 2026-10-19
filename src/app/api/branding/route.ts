@@ -26,6 +26,9 @@ export async function PUT(request: NextRequest) {
     .from("site_settings")
     .update({ logo_url: logoUrl, updated_at: new Date().toISOString() })
     .eq("id", 1);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[branding PUT] Erro ao atualizar logo no banco:", error.message);
+    return NextResponse.json({ error: "Falha ao atualizar logotipo no servidor." }, { status: 500 });
+  }
   return NextResponse.json({ configured: true, logoUrl });
 }

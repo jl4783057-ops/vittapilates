@@ -11,19 +11,15 @@ export async function proxy(request: NextRequest) {
   const configuredR2AccountId = (process.env.CLOUDFLARE_R2_ACCOUNT_ID || process.env.R2_ACCOUNT_ID || "").trim();
   const configuredR2Bucket = (process.env.CLOUDFLARE_R2_BUCKET_NAME || process.env.R2_BUCKET_NAME || "").trim();
 
-  // Origens do R2 para upload multipart e reprodução (cobre path-style, virtual-hosted e wildcard)
+  // Origens do R2 para upload multipart e reprodução
   const r2Origins: string[] = [];
   if (/^[a-f0-9]{32}$/i.test(configuredR2AccountId)) {
-    // Formato path-style: https://<account_id>.r2.cloudflarestorage.com
     r2Origins.push(`https://${configuredR2AccountId}.r2.cloudflarestorage.com`);
-    // Formato virtual-hosted wildcard: https://*.<account_id>.r2.cloudflarestorage.com
     r2Origins.push(`https://*.${configuredR2AccountId}.r2.cloudflarestorage.com`);
-    // Bucket específico configurado
     if (configuredR2Bucket) {
       r2Origins.push(`https://${configuredR2Bucket}.${configuredR2AccountId}.r2.cloudflarestorage.com`);
     }
   }
-  // Domínio genérico de armazenamento do Cloudflare R2
   r2Origins.push("https://*.r2.cloudflarestorage.com");
   if (r2PublicDomain) {
     r2Origins.push(r2PublicDomain);
@@ -31,7 +27,7 @@ export async function proxy(request: NextRequest) {
 
   const uniqueR2Origins = Array.from(new Set(r2Origins)).join(" ");
 
-  // Lista de fontes permitidas estritamente para imagens e vídeos do projeto
+  // Fontes permitidas estritamente para imagens e vídeos do projeto
   const allowedImageSources = [
     "'self'",
     "data:",
@@ -41,7 +37,7 @@ export async function proxy(request: NextRequest) {
     "https://*.public.blob.vercel-storage.com",
     "https://*.blob.vercel-storage.com",
     uniqueR2Origins,
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 
   const allowedMediaSources = [
     "'self'",
@@ -49,18 +45,15 @@ export async function proxy(request: NextRequest) {
     "https://commondatastorage.googleapis.com",
     "https://*.supabase.co",
     uniqueR2Origins,
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 
   const allowedConnectSources = [
     "'self'",
     "https://*.supabase.co",
     "wss://*.supabase.co",
     uniqueR2Origins,
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 
-  // A nonce lets the browser execute scripts Next.js emitted for this request.
-  // Note: Modern browsers honoring CSP Level 3 ignore 'unsafe-inline' when a nonce or 'strict-dynamic' is present,
-  // but keeping 'unsafe-inline' and allowing trusted scripts avoids total client blackout if any intermediary caches mismatch.
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const csp = [
     "default-src 'self'",
@@ -82,7 +75,7 @@ export async function proxy(request: NextRequest) {
   requestHeaders.set("Content-Security-Policy", csp);
   requestHeaders.set("x-nonce", nonce);
 
-  // Redirects are an early navigation check; AdminLayout verifies the signed cookie too.
+  // Redirecionamento antecipado no Edge para o painel administrativo
   if (pathname.startsWith("/admin") && pathname !== "/admin/login") {
     const session = request.cookies.get("pilates_admin_session")?.value;
     if (!session) {
@@ -124,7 +117,6 @@ export async function proxy(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value);
           });
-          // Sincroniza o cabeçalho 'cookie' interno para que Server Components recebam a sessão renovada
           requestHeaders.set(
             "cookie",
             request.cookies
@@ -136,14 +128,20 @@ export async function proxy(request: NextRequest) {
             request: { headers: requestHeaders },
           });
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
+            response.cookies.set(name, value, {
+              ...options,
+              secure: process.env.NODE_ENV === "production",
+            })
           );
         },
       },
     });
 
-    // Chama getUser() para validar e renovar token expirado se necessário
-    await supabase.auth.getUser();
+    try {
+      await supabase.auth.getUser();
+    } catch {
+      // Ignora falha transitória de rede na renovação
+    }
   }
 
   response.headers.set("Content-Security-Policy", csp);

@@ -94,6 +94,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     return NextResponse.json({ error: "Ação inválida." }, { status: 400 });
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 502 });
+    console.error("[cortesias/[id] PATCH] Exceção:", err);
+    return NextResponse.json({ error: "Falha ao atualizar dados da cortesia." }, { status: 500 });
   }
 }

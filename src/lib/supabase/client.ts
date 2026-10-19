@@ -37,9 +37,10 @@ export const supabase = isSupabaseConfigured
         autoRefreshToken: true,
       },
       cookieOptions: {
-        maxAge: 60 * 60 * 24 * 365, // 1 ano
+        maxAge: 60 * 60 * 24 * 30, // 30 dias (tempo balanceado e seguro)
         path: '/',
         sameSite: 'lax',
+        secure: typeof window !== 'undefined' ? window.location.protocol === 'https:' : process.env.NODE_ENV === 'production',
       },
     })
   : null;

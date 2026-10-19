@@ -26,8 +26,11 @@ export async function GET(request: NextRequest) {
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ grants: data });
+    if (error) {
+      console.error("[cortesias GET] Erro ao listar cortesias:", error.message);
+      return NextResponse.json({ error: "Erro ao consultar cortesias no banco." }, { status: 500 });
+    }
+    return NextResponse.json({ grants: data });
 }
 
 export async function POST(request: NextRequest) {
@@ -86,9 +89,13 @@ export async function POST(request: NextRequest) {
       .select("*")
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error("[cortesias POST] Erro ao criar cortesia:", error.message);
+      return NextResponse.json({ error: "Falha ao registrar cortesia no banco." }, { status: 500 });
+    }
     return NextResponse.json({ grant }, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 502 });
+    console.error("[cortesias POST] Exceção:", err);
+    return NextResponse.json({ error: "Falha ao processar convite de cortesia." }, { status: 502 });
   }
 }

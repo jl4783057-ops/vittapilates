@@ -176,7 +176,7 @@ REVOKE UPDATE ON public.profiles FROM anon, authenticated;
 GRANT UPDATE (name, avatar_url, phone, completed_lesson_ids, last_lesson_id, custom_plan, updated_at)
   ON public.profiles TO authenticated;
 
--- Regras de categorias e subcategorias:
+-- Regras de cat-- Regras de categorias e subcategorias:
 -- Todo mundo pode ler categorias em available ou updating; Admin pode gerenciar tudo.
 CREATE POLICY "Leitura pública de categorias publicadas" ON public.categories
   FOR SELECT USING (
@@ -185,9 +185,18 @@ CREATE POLICY "Leitura pública de categorias publicadas" ON public.categories
     OR (SELECT public.current_user_is_admin())
   );
 
-CREATE POLICY "Administradora gerencia categorias" ON public.categories
-  FOR ALL USING ((SELECT public.current_user_is_admin()))
+CREATE POLICY "Admin insere categorias" ON public.categories
+  FOR INSERT TO authenticated
   WITH CHECK ((SELECT public.current_user_is_admin()));
+
+CREATE POLICY "Admin atualiza categorias" ON public.categories
+  FOR UPDATE TO authenticated
+  USING ((SELECT public.current_user_is_admin()))
+  WITH CHECK ((SELECT public.current_user_is_admin()));
+
+CREATE POLICY "Admin exclui categorias" ON public.categories
+  FOR DELETE TO authenticated
+  USING ((SELECT public.current_user_is_admin()));
 
 CREATE POLICY "Leitura pública de subcategorias publicadas" ON public.subcategories
   FOR SELECT USING (
@@ -196,9 +205,18 @@ CREATE POLICY "Leitura pública de subcategorias publicadas" ON public.subcatego
     OR (SELECT public.current_user_is_admin())
   );
 
-CREATE POLICY "Administradora gerencia subcategorias" ON public.subcategories
-  FOR ALL USING ((SELECT public.current_user_is_admin()))
+CREATE POLICY "Admin insere subcategorias" ON public.subcategories
+  FOR INSERT TO authenticated
   WITH CHECK ((SELECT public.current_user_is_admin()));
+
+CREATE POLICY "Admin atualiza subcategorias" ON public.subcategories
+  FOR UPDATE TO authenticated
+  USING ((SELECT public.current_user_is_admin()))
+  WITH CHECK ((SELECT public.current_user_is_admin()));
+
+CREATE POLICY "Admin exclui subcategorias" ON public.subcategories
+  FOR DELETE TO authenticated
+  USING ((SELECT public.current_user_is_admin()));
 
 -- Regras de exercícios:
 -- Leitura permitida para alunas se a categoria e a subcategoria estiverem ativas (não 'hidden').
@@ -221,10 +239,18 @@ CREATE POLICY "Leitura pública de exercícios visíveis" ON public.exercises
     OR (SELECT public.current_user_is_admin())
   );
 
-CREATE POLICY "Administradora gerencia exercicios" ON public.exercises
-  FOR ALL TO authenticated
+CREATE POLICY "Admin insere exercicios" ON public.exercises
+  FOR INSERT TO authenticated
+  WITH CHECK ((SELECT public.current_user_is_admin()));
+
+CREATE POLICY "Admin atualiza exercicios" ON public.exercises
+  FOR UPDATE TO authenticated
   USING ((SELECT public.current_user_is_admin()))
   WITH CHECK ((SELECT public.current_user_is_admin()));
+
+CREATE POLICY "Admin exclui exercicios" ON public.exercises
+  FOR DELETE TO authenticated
+  USING ((SELECT public.current_user_is_admin()));
 
 REVOKE ALL ON public.exercises FROM PUBLIC;
 REVOKE ALL ON public.exercises FROM anon;
@@ -250,17 +276,31 @@ CREATE POLICY "Alunas com acesso ativo visualizam aulas publicadas" ON public.le
     OR (SELECT public.current_user_is_admin())
   );
 
-CREATE POLICY "Administradora gerencia aulas" ON public.lessons
-  FOR ALL USING ((SELECT public.current_user_is_admin()))
+CREATE POLICY "Admin insere aulas" ON public.lessons
+  FOR INSERT TO authenticated
   WITH CHECK ((SELECT public.current_user_is_admin()));
+
+CREATE POLICY "Admin atualiza aulas" ON public.lessons
+  FOR UPDATE TO authenticated
+  USING ((SELECT public.current_user_is_admin()))
+  WITH CHECK ((SELECT public.current_user_is_admin()));
+
+CREATE POLICY "Admin exclui aulas" ON public.lessons
+  FOR DELETE TO authenticated
+  USING ((SELECT public.current_user_is_admin()));
 
 -- Regras de configurações do site:
 -- Leitura pública; Edição apenas admin.
 CREATE POLICY "Leitura pública de configurações" ON public.site_settings
   FOR SELECT USING (true);
 
-CREATE POLICY "Administradora gerencia configurações" ON public.site_settings
-  FOR ALL USING ((SELECT public.current_user_is_admin()))
+CREATE POLICY "Admin insere configurações" ON public.site_settings
+  FOR INSERT TO authenticated
+  WITH CHECK ((SELECT public.current_user_is_admin()));
+
+CREATE POLICY "Admin atualiza configurações" ON public.site_settings
+  FOR UPDATE TO authenticated
+  USING ((SELECT public.current_user_is_admin()))
   WITH CHECK ((SELECT public.current_user_is_admin()));
 
 -- Regras do Quiz:
@@ -268,9 +308,18 @@ CREATE POLICY "Administradora gerencia configurações" ON public.site_settings
 CREATE POLICY "Leitura de perguntas do quiz" ON public.quiz_questions
   FOR SELECT USING (true);
 
-CREATE POLICY "Administradora gerencia quiz" ON public.quiz_questions
-  FOR ALL USING ((SELECT public.current_user_is_admin()))
+CREATE POLICY "Admin insere quiz" ON public.quiz_questions
+  FOR INSERT TO authenticated
   WITH CHECK ((SELECT public.current_user_is_admin()));
+
+CREATE POLICY "Admin atualiza quiz" ON public.quiz_questions
+  FOR UPDATE TO authenticated
+  USING ((SELECT public.current_user_is_admin()))
+  WITH CHECK ((SELECT public.current_user_is_admin()));
+
+CREATE POLICY "Admin exclui quiz" ON public.quiz_questions
+  FOR DELETE TO authenticated
+  USING ((SELECT public.current_user_is_admin()));
 
 -- Respostas do quiz podem conter dados pessoais. A gravação/leitura é feita
 -- pelo servidor depois de validações, nunca anonimamente pelo navegador.
@@ -278,3 +327,25 @@ REVOKE ALL ON public.quiz_submissions FROM anon, authenticated;
 
 CREATE POLICY "Administradora lê submissões do quiz" ON public.quiz_submissions
   FOR SELECT USING ((SELECT public.current_user_is_admin()));
+
+-- Tabela de Auditoria de Segurança
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  event_type TEXT NOT NULL,
+  actor_type TEXT NOT NULL CHECK (actor_type IN ('admin', 'student', 'system', 'anonymous')),
+  actor_id TEXT,
+  ip_address TEXT,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Admin visualiza logs de auditoria" ON public.audit_logs
+  FOR SELECT TO authenticated
+  USING ((SELECT public.current_user_is_admin()));
+
+REVOKE ALL ON public.audit_logs FROM anon, authenticated;
+GRANT SELECT ON public.audit_logs TO authenticated;
+GRANT INSERT ON public.audit_logs TO authenticated;
+

@@ -1,11 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin, getSupabaseAnonServer, isSupabaseAdminConfigured } from "@/lib/supabase/admin";
 import { normalizeEmail, siteUrl } from "@/lib/access";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Resposta unificada para rota de recuperação de senha
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+
+  // Rate Limiting por IP: máx 5 solicitações a cada 10 minutos
+  const ipRateLimit = checkRateLimit(`pw-recovery-ip:${ip}`, {
+    maxRequests: 5,
+    windowSeconds: 600,
+    blockDurationSeconds: 1200,
+  });
+
+  if (!ipRateLimit.success) {
+    return NextResponse.json(
+      { error: "Muitas solicitações em sequência. Por favor, aguarde alguns minutos antes de tentar novamente." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(ipRateLimit.retryAfterSeconds ?? 60) },
+      }
+    );
+  }
+
   if (!isSupabaseAdminConfigured) {
     return NextResponse.json(
       { error: "Serviço de autenticação temporariamente indisponível." },
@@ -18,47 +37,53 @@ export async function POST(request: NextRequest) {
     const rawEmail = String(body.email ?? "");
     const cleanEmail = normalizeEmail(rawEmail);
 
-    if (!cleanEmail || !EMAIL_RE.test(cleanEmail)) {
+    if (!cleanEmail || !EMAIL_RE.test(cleanEmail) || cleanEmail.length > 150) {
       return NextResponse.json(
         { error: "Por favor, informe um endereço de e-mail válido." },
         { status: 400 }
       );
     }
 
+    // Rate Limiting por E-mail: máx 3 solicitações por e-mail a cada 10 minutos
+    const emailRateLimit = checkRateLimit(`pw-recovery-email:${cleanEmail}`, {
+      maxRequests: 3,
+      windowSeconds: 600,
+      blockDurationSeconds: 1200,
+    });
+
+    if (!emailRateLimit.success) {
+      return NextResponse.json(
+        { error: "Muitos pedidos para este e-mail. Por favor, aguarde alguns minutos." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(emailRateLimit.retryAfterSeconds ?? 60) },
+        }
+      );
+    }
+
     const admin = getSupabaseAdmin();
 
-    // 1. Verifica se a usuária possui conta cadastrada em profiles
+    // 1. Verifica se a conta existe (em profiles ou no Auth)
     const { data: profile } = await admin
       .from("profiles")
-      .select("id, email, name")
+      .select("id")
       .eq("email", cleanEmail)
       .maybeSingle();
 
-    // 2. Se não encontrou no profile, verifica se existe usuário no Supabase Auth
-    let authUserExists = false;
-    let authUserId: string | null = null;
-    let userName: string = profile?.name || "";
+    let authUserExists = Boolean(profile?.id);
 
-    if (profile?.id) {
-      authUserExists = true;
-      authUserId = profile.id;
-    } else {
-      // Caso de inconsistência onde a conta existe no Auth mas não no profiles
+    if (!authUserExists) {
       const { data: listData } = await admin.auth.admin.listUsers({ page: 1, perPage: 100 });
       const found = listData?.users?.find(
         (u) => u.email && normalizeEmail(u.email) === cleanEmail
       );
       if (found) {
         authUserExists = true;
-        authUserId = found.id;
-        userName = (found.user_metadata?.name as string) || "";
-        
-        // Auto-repara o perfil ausente para evitar que o usuário fique em limbo
         try {
           await admin.from("profiles").upsert({
             id: found.id,
             email: cleanEmail,
-            name: userName || cleanEmail.split("@")[0],
+            name: (found.user_metadata?.name as string) || cleanEmail.split("@")[0],
             subscription_status: "inactive",
             access_type: "none",
           });
@@ -68,46 +93,33 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Se a conta NÃO existir nem no profile nem no Auth:
-    if (!authUserExists) {
-      console.log(`[recuperar-senha] E-mail não cadastrado consultado: ${cleanEmail}`);
-      return NextResponse.json({
-        exists: false,
-        message: "Não encontramos uma conta com este e-mail. Confira se digitou corretamente. Se você ainda não tem acesso, entre em contato com o suporte.",
+    // 2. Se a conta existir, dispara o link oficial de redefinição
+    if (authUserExists) {
+      const origin = siteUrl(request);
+      const redirectTo = `${origin}/redefinir-senha`;
+
+      const { error: resetError } = await getSupabaseAnonServer().auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo,
       });
-    }
 
-    // 4. Se a conta EXISTIR: dispara a redefinição de senha oficial via Supabase
-    const origin = siteUrl(request);
-    const redirectTo = `${origin}/redefinir-senha`;
-
-    const { error: resetError } = await getSupabaseAnonServer().auth.resetPasswordForEmail(cleanEmail, {
-      redirectTo,
-    });
-
-    if (resetError) {
-      console.error(`[recuperar-senha] Erro ao disparar e-mail de recuperação:`, resetError.message);
-      if (resetError.message.toLowerCase().includes("too many requests") || resetError.status === 429) {
-        return NextResponse.json(
-          { error: "Muitas tentativas em pouco tempo. Aguarde alguns minutos antes de solicitar novamente." },
-          { status: 429 }
-        );
+      if (resetError) {
+        console.error(`[recuperar-senha] Erro ao disparar e-mail de recuperação para ${cleanEmail}:`, resetError.message);
+      } else {
+        console.log(`[recuperar-senha] E-mail de redefinição despachado para: ${cleanEmail}`);
       }
-      return NextResponse.json(
-        { error: "Não foi possível enviar o e-mail de recuperação no momento. Tente novamente mais tarde." },
-        { status: 502 }
-      );
+    } else {
+      // Log seguro apenas no servidor para monitoramento
+      console.log(`[recuperar-senha] Consulta para e-mail não cadastrado (resposta genérica enviada): ${cleanEmail}`);
     }
 
-    console.log(`[recuperar-senha] Link de recuperação enviado com sucesso para ${cleanEmail} (userId: ${authUserId})`);
-
+    // RESPOSTA UNIFORME CONTRA USER ENUMERATION:
+    // Retorna exatamente a mesma mensagem de sucesso independente do e-mail existir ou não.
     return NextResponse.json({
-      exists: true,
-      message: "Se este e-mail estiver cadastrado, enviaremos um link para redefinir sua senha. Verifique sua caixa de entrada e o spam.",
-      email: cleanEmail,
+      success: true,
+      message: "Se este e-mail estiver cadastrado, você receberá as instruções para redefinir sua senha em instantes. Verifique sua caixa de entrada e a pasta de spam.",
     });
   } catch (err: unknown) {
-    console.error("[recuperar-senha] Erro inesperado na rota:", err);
+    console.error("[recuperar-senha] Erro inesperado:", err);
     return NextResponse.json(
       { error: "Ocorreu um erro ao processar sua solicitação. Tente novamente em instantes." },
       { status: 500 }

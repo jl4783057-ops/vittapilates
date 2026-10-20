@@ -81,23 +81,23 @@ export function QuizClient({ siteSettings }: QuizClientProps) {
       {/* CONTEÚDO PRINCIPAL: PÁGINA DA OFERTA (LANDING PAGE) */}
       {/* ============================================================ */}
       <main className="max-w-xl mx-auto w-full my-auto py-2 sm:py-4">
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-5 sm:space-y-6 animate-fade-in">
           {/* Título Principal */}
-          <div className="text-center space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321] leading-tight">
+          <div className="text-center space-y-2 px-2 sm:px-4">
+            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#292321] leading-tight max-w-md mx-auto">
               Pratique Pilates no conforto do celular ou de onde você estiver
             </h1>
-            <p className="text-xs sm:text-sm text-[#827B77] max-w-md mx-auto">
-              Acesso Imediato às suas aulas na plataforma Vitta Pilates pelo celular ou computador
+            <p className="text-xs sm:text-sm text-[#827B77] max-w-md mx-auto leading-relaxed">
+              Acesso imediato às suas aulas na plataforma Vitta Pilates pelo celular ou computador.
             </p>
           </div>
 
-          {/* Imagem de Destaque: Imagem de referência da plataforma em celular e notebook */}
-          <div className="w-full rounded-3xl overflow-hidden border border-[#EADBCE] bg-[#FAF7F2] shadow-sm">
+          {/* Imagem da Oferta: exibida inteira, sem cortar ou distorcer */}
+          <div className="w-full rounded-3xl overflow-hidden shadow-xs">
             <img
-              src="/images/vitta-offer-hero.jpg"
-              alt="Plataforma Vitta Pilates no celular e computador"
-              className="w-full h-auto object-cover aspect-16/9"
+              src="/images/vitta-offer-hero.png"
+              alt="Pilates para cada objetivo, tudo em um só lugar - Vitta Pilates"
+              className="w-full h-auto block"
             />
           </div>
 

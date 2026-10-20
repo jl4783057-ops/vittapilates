@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Vitta Pilates • Pratique Onde Estiver",
-  description: "Acesso Imediato às suas aulas na plataforma Vitta Pilates pelo celular ou computador.",
+  description: "Acesso imediato às suas aulas na plataforma Vitta Pilates pelo celular ou computador.",
 };
 
 export default async function QuizPage() {

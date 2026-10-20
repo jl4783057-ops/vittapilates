@@ -4,8 +4,8 @@ import { QuizClient } from "./QuizClient";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Quiz Personalizado • Vitta Pilates",
-  description: "Descubra o plano ideal de movimentos e autocuidado para o seu corpo com a Vitta Pilates.",
+  title: "Vitta Pilates • Pratique Onde Estiver",
+  description: "Acesso Imediato às suas aulas na plataforma Vitta Pilates pelo celular ou computador.",
 };
 
 export default async function QuizPage() {

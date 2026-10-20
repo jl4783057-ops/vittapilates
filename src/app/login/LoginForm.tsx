@@ -307,26 +307,6 @@ export function LoginForm({
               </button>
             </form>
 
-            <div className="pt-2 border-t border-[#EADBCE]">
-              <div className="bg-gradient-to-br from-[#FAF7F2] to-[#F3EAE3] p-5 rounded-2xl border border-[#EBD6D5] space-y-3">
-                <div className="flex items-center gap-2 text-[#B77D82]">
-                  <Sparkles className="w-4 h-4 fill-[#B77D82]/20" />
-                  <h2 className="font-serif font-bold text-base text-[#292321]">
-                    Ainda não tem seu plano personalizado?
-                  </h2>
-                </div>
-                <p className="text-xs text-[#827B77] leading-relaxed">
-                  Responda algumas perguntas rápidas para encontrarmos um ponto de partida adequado à sua rotina e aos seus objetivos.
-                </p>
-                <Link
-                  href="/quiz"
-                  className="inline-flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-[#B77D82] text-white hover:bg-[#A3676C] transition text-xs font-semibold shadow-xs group"
-                >
-                  <span>Fazer meu Plano Personalizado</span>
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
-              </div>
-            </div>
           </div>
         </div>
       </main>
